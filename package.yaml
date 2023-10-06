@@ -1,0 +1,45 @@
+name: agenda-txt
+version: 0.1.0.0
+synopsis: A CLI tool for managing a text-based agenda
+description: Please see the README at <https://github.com/jwoudenberg/agenda-txt>.
+author: Jasper Woudenberg
+maintainer: mail@jasperwoudenberg.com
+copyright: 2023 Jasper Woudenberg
+homepage: https://github.com/jwoudenberg/agenda-txt#readme
+license-file: LICENSE
+github: jwoudenberg/agenda-txt
+extra-doc-files:
+- README.md
+library:
+  exposed-modules:
+  - AgendaTxt
+  source-dirs: src
+executables:
+  agenda-txt:
+    dependencies:
+    - agenda-txt
+    main: Main.hs
+    source-dirs: app
+    ghc-options:
+    - -threaded
+    - -rtsopts "-with-rtsopts=-N -T"
+    - -O2
+dependencies:
+- base >= 4.10.1.0 && < 5
+ghc-options:
+- -Wall
+- -Werror
+- -Wcompat
+- -Widentities
+- -Wincomplete-record-updates
+- -Wpartial-fields
+- -Wredundant-constraints
+- -Wincomplete-uni-patterns
+default-extensions:
+- DeriveGeneric
+- GeneralizedNewtypeDeriving
+- NamedFieldPuns
+- NumericUnderscores
+- OverloadedStrings
+- ScopedTypeVariables
+- StrictData

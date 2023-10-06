@@ -1,0 +1,64 @@
+cabal-version: 1.18
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           agenda-txt
+version:        0.1.0.0
+synopsis:       A CLI tool for managing a text-based agenda
+description:    Please see the README at <https://github.com/jwoudenberg/agenda-txt>.
+homepage:       https://github.com/jwoudenberg/agenda-txt#readme
+bug-reports:    https://github.com/jwoudenberg/agenda-txt/issues
+author:         Jasper Woudenberg
+maintainer:     mail@jasperwoudenberg.com
+copyright:      2023 Jasper Woudenberg
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+extra-doc-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/jwoudenberg/agenda-txt
+
+library
+  exposed-modules:
+      AgendaTxt
+  other-modules:
+      Paths_agenda_txt
+  hs-source-dirs:
+      src
+  default-extensions:
+      DeriveGeneric
+      GeneralizedNewtypeDeriving
+      NamedFieldPuns
+      NumericUnderscores
+      OverloadedStrings
+      ScopedTypeVariables
+      StrictData
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wpartial-fields -Wredundant-constraints -Wincomplete-uni-patterns
+  build-depends:
+      base >=4.10.1.0 && <5
+  default-language: Haskell2010
+
+executable agenda-txt
+  main-is: Main.hs
+  other-modules:
+      Paths_agenda_txt
+  hs-source-dirs:
+      app
+  default-extensions:
+      DeriveGeneric
+      GeneralizedNewtypeDeriving
+      NamedFieldPuns
+      NumericUnderscores
+      OverloadedStrings
+      ScopedTypeVariables
+      StrictData
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wpartial-fields -Wredundant-constraints -Wincomplete-uni-patterns -threaded -rtsopts "-with-rtsopts=-N -T" -O2
+  build-depends:
+      base >=4.10.1.0 && <5
+    , agenda-txt
+  default-language: Haskell2010
