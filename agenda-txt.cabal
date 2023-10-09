@@ -38,6 +38,7 @@ library
       OverloadedStrings
       ScopedTypeVariables
       StrictData
+      TupleSections
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wpartial-fields -Wredundant-constraints -Wincomplete-uni-patterns
   build-depends:
       attoparsec
@@ -61,6 +62,7 @@ executable agenda-txt
       OverloadedStrings
       ScopedTypeVariables
       StrictData
+      TupleSections
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wpartial-fields -Wredundant-constraints -Wincomplete-uni-patterns -threaded -rtsopts "-with-rtsopts=-N -T" -O2
   build-depends:
       agenda-txt
@@ -86,6 +88,7 @@ test-suite spec
       OverloadedStrings
       ScopedTypeVariables
       StrictData
+      TupleSections
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wpartial-fields -Wredundant-constraints -Wincomplete-uni-patterns
   build-depends:
       agenda-txt

@@ -55,3 +55,4 @@ default-extensions:
 - OverloadedStrings
 - ScopedTypeVariables
 - StrictData
+- TupleSections

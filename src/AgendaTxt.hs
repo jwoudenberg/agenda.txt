@@ -3,6 +3,7 @@ module AgendaTxt where
 import Chronos
 import Data.Attoparsec.Text
 import Data.Char (isAlpha)
+import Data.List (sortOn)
 import Data.Scientific (floatingOrInteger)
 import Data.Text
 
@@ -37,6 +38,51 @@ data Event = Event
     description :: Text
   }
   deriving (Eq, Show)
+
+eventsWithin :: Day -> Day -> [Event] -> [(Day, Event)]
+eventsWithin start end events =
+  let events' = sortOn startDay $ Prelude.filter (\event -> startDay event > end) events
+      days = [start .. end]
+
+      keepMatches :: [(Day, Event)] -> [(Day, Event)] -> [(Day, Event)]
+      keepMatches [] _ = []
+      keepMatches (x : xs) acc =
+        case uncurry eventOnDay x of
+          Match -> keepMatches xs (x : acc)
+          NoMatch -> keepMatches xs acc
+          NoMatchAndFinished -> acc
+   in foldMap (\event -> keepMatches [] $ fmap (,event) days) events'
+
+data EventOnDay = Match | NoMatch | NoMatchAndFinished deriving (Eq, Ord)
+
+eventOnDay :: Day -> Event -> EventOnDay
+eventOnDay day' event =
+  if day' == startDay event
+    then Match
+    else case repeatRule event of
+      Nothing ->
+        NoMatchAndFinished
+      Just filters ->
+        Prelude.foldr (max . matchesFilter day' (dayToDate day')) Match filters
+
+matchesFilter :: Day -> Date -> RepeatFilter -> EventOnDay
+matchesFilter _ date (DatePattern pattern) =
+  if matchesPattern date pattern then Match else NoMatch
+matchesFilter _ date (NotDatePattern pattern) =
+  if matchesPattern date pattern then NoMatch else Match
+matchesFilter _ date (WeekDay weekDay) =
+  if weekDay == dateToDayOfWeek date then Match else NoMatch
+matchesFilter day' _ (EndDate endDate) =
+  if day' > endDate then NoMatchAndFinished else Match
+
+matchesPattern :: Date -> DatePattern -> Bool
+matchesPattern date pattern =
+  let matches :: (Eq a) => a -> Maybe a -> Bool
+      matches _ Nothing = True
+      matches x (Just y) = x == y
+   in matches (dateYear date) (year pattern)
+        && matches (dateMonth date) (month pattern)
+        && matches (dateDay date) (AgendaTxt.day pattern)
 
 parserEvent :: Parser Event
 parserEvent = do
