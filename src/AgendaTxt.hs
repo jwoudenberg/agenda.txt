@@ -123,13 +123,14 @@ parserDatePattern = do
 
 parserInt :: Parser Int
 parserInt = do
+  next <- peekChar'
+  if next == '-'
+    then fail "unexpected negative number"
+    else pure ()
   floatOrInteger <- floatingOrInteger <$> scientific
   case floatOrInteger of
     Left (_ :: Double) -> fail "unexpected float in DatePattern"
-    Right int ->
-      if int < 0
-        then fail "unexpected negative number"
-        else pure int
+    Right int -> pure int
 
 parserTime :: Parser EventTime
 parserTime =
