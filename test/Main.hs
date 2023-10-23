@@ -36,7 +36,7 @@ builderEvent :: Event -> Gen Builder
 builderEvent event =
   builderDay (startDay event)
     <> builderSpacing
-    <> Prelude.maybe mempty builderRepeatRule (repeatRule event)
+    <> builderRepeatRule (repeatRule event)
     <> builderSpacing1
     <> Prelude.maybe mempty builderTime (time event)
     <> builderSpacing
@@ -53,6 +53,7 @@ builderDay day =
   pure $ builder_Ymd (Just '-') (dayToDate day)
 
 builderRepeatRule :: [RepeatFilter] -> Gen Builder
+builderRepeatRule [] = element ["", "[]", "[ ]"]
 builderRepeatRule repeatFilters =
   pure "["
     <> builderSpacing
@@ -110,7 +111,7 @@ genEvent :: Gen Event
 genEvent =
   Event
     <$> genDay
-    <*> Gen.maybe (list (linear 0 4) genRepeatFilter)
+    <*> list (linear 0 4) genRepeatFilter
     <*> Gen.maybe genEventTime
     <*> text (linear 0 20) unicode
 

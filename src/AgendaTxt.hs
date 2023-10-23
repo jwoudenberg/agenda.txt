@@ -3,9 +3,9 @@ module AgendaTxt where
 import Chronos
 import Data.Attoparsec.Text
 import Data.Char (isAlpha)
-import Data.List (sortOn)
 import Data.Scientific (floatingOrInteger)
 import Data.Text
+import SortedList
 
 main :: IO ()
 main = putStrLn "Hello, agenda-txt!"
@@ -33,16 +33,22 @@ data EventTime = EventTime
 
 data Event = Event
   { startDay :: Day,
-    repeatRule :: Maybe [RepeatFilter],
+    repeatRule :: [RepeatFilter],
     time :: Maybe EventTime,
     description :: Text
   }
   deriving (Eq, Show)
 
-eventsWithin :: Day -> Day -> [Event] -> [(Day, Event)]
-eventsWithin start end events =
-  let events' = sortOn startDay $ Prelude.filter (\event -> startDay event > end) events
-      days = [start .. end]
+instance Ord Event where
+  compare a b = compare (startDay a) (startDay b)
+
+eventsFrom :: [Day] -> SortedList Event -> [(Day, Event)]
+eventsFrom days events =
+  let direction :: Direction
+      direction =
+        case days of
+          x : y : _ -> if x > y then Past else Future
+          _ -> Future
 
       keepMatches :: [(Day, Event)] -> [(Day, Event)] -> [(Day, Event)]
       keepMatches [] _ = []
@@ -50,20 +56,30 @@ eventsWithin start end events =
         case uncurry eventOnDay x of
           Match -> keepMatches xs (x : acc)
           NoMatch -> keepMatches xs acc
-          NoMatchAndFinished -> acc
-   in foldMap (\event -> keepMatches [] $ fmap (,event) days) events'
+          NoFurtherMatches direction' ->
+            if direction == direction'
+              then acc
+              else keepMatches xs acc
+   in foldMap (\event -> keepMatches [] $ fmap (,event) days) events
 
-data EventOnDay = Match | NoMatch | NoMatchAndFinished deriving (Eq, Ord)
+data EventOnDay
+  = Match
+  | NoMatch
+  | NoFurtherMatches Direction
+  deriving (Eq, Ord)
+
+data Direction = Future | Past deriving (Eq, Ord)
 
 eventOnDay :: Day -> Event -> EventOnDay
 eventOnDay day' event =
-  if day' == startDay event
-    then Match
-    else case repeatRule event of
-      Nothing ->
-        NoMatchAndFinished
-      Just filters ->
-        Prelude.foldr (max . matchesFilter day' (dayToDate day')) Match filters
+  case compare day' (startDay event) of
+    EQ -> Match
+    LT -> NoFurtherMatches Past
+    GT ->
+      Prelude.foldr
+        (max . matchesFilter day' (dayToDate day'))
+        Match
+        (repeatRule event)
 
 matchesFilter :: Day -> Date -> RepeatFilter -> EventOnDay
 matchesFilter _ date (DatePattern pattern) =
@@ -73,7 +89,7 @@ matchesFilter _ date (NotDatePattern pattern) =
 matchesFilter _ date (WeekDay weekDay) =
   if weekDay == dateToDayOfWeek date then Match else NoMatch
 matchesFilter day' _ (EndDate endDate) =
-  if day' > endDate then NoMatchAndFinished else Match
+  if day' > endDate then NoFurtherMatches Future else Match
 
 matchesPattern :: Date -> DatePattern -> Bool
 matchesPattern date pattern =
@@ -88,7 +104,7 @@ parserEvent :: Parser Event
 parserEvent = do
   startDate <- parserDate
   _ <- skipSpace
-  repeatRule <- option Nothing (Just <$> parserRepeatRule)
+  repeatRule <- option [] (parserRepeatRule)
   _ <- skipSpace
   time <- option Nothing (Just <$> parserTime)
   _ <- skipSpace

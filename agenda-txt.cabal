@@ -27,6 +27,7 @@ library
   exposed-modules:
       AgendaTxt
   other-modules:
+      SortedList
       Paths_agenda_txt
   hs-source-dirs:
       src
