@@ -13,6 +13,7 @@ extra-doc-files:
 library:
   exposed-modules:
   - AgendaTxt
+  - Test
   source-dirs: src
 executables:
   agenda-txt:
@@ -28,7 +29,6 @@ tests:
   spec:
     dependencies:
     - agenda-txt
-    - hedgehog
     main: Main.hs
     source-dirs:
     - test
@@ -36,6 +36,7 @@ dependencies:
 - base >= 4.10.1.0 && < 5
 - attoparsec
 - chronos
+- hedgehog
 - scientific
 - text
 ghc-options:

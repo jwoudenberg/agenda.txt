@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       AgendaTxt
+      Test
   other-modules:
       SortedList
       Paths_agenda_txt
@@ -45,6 +46,7 @@ library
       attoparsec
     , base >=4.10.1.0 && <5
     , chronos
+    , hedgehog
     , scientific
     , text
   default-language: Haskell2010
@@ -70,6 +72,7 @@ executable agenda-txt
     , attoparsec
     , base >=4.10.1.0 && <5
     , chronos
+    , hedgehog
     , scientific
     , text
   default-language: Haskell2010

@@ -42,6 +42,7 @@ data Event = Event
 instance Ord Event where
   compare a b = compare (startDay a) (startDay b)
 
+-- `[Day]` must be sorted in ascending or descending order.
 eventsFrom :: [Day] -> SortedList Event -> [(Day, Event)]
 eventsFrom days events =
   let direction :: Direction
