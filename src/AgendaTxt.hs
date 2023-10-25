@@ -42,14 +42,17 @@ data Event = Event
 instance Ord Event where
   compare a b = compare (startDay a) (startDay b)
 
--- `[Day]` must be sorted in ascending or descending order.
-eventsFrom :: [Day] -> SortedList Event -> [(Day, Event)]
-eventsFrom days events =
-  let direction :: Direction
-      direction =
-        case days of
-          x : y : _ -> if x > y then Past else Future
-          _ -> Future
+data DayRange
+  = From Day Direction
+  | Between Day Day
+
+eventsFrom :: DayRange -> SortedList Event -> [(Day, Event)]
+eventsFrom range events =
+  let (direction, days) =
+        case range of
+          From day' Future -> (Future, [day' ..])
+          From day' Past -> (Past, [day', pred day' ..])
+          Between start end -> (if start > end then Past else Future, [start .. end])
 
       keepMatches :: [(Day, Event)] -> [(Day, Event)] -> [(Day, Event)]
       keepMatches [] _ = []
