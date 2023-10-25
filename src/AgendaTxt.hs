@@ -6,9 +6,54 @@ import Data.Char (isAlpha)
 import Data.Scientific (floatingOrInteger)
 import Data.Text
 import SortedList
+import System.Environment (getArgs)
 
 main :: IO ()
-main = putStrLn "Hello, agenda-txt!"
+main = do
+  parsedArgs <- parseArgs <$> getArgs <*> defaultParsedArgs
+  case parsedArgs of
+    ShowHelp -> do
+      putStrLn "Parse plain text agenda.txt files."
+      putStrLn ""
+      showHelp
+    UnknownArg arg -> do
+      putStrLn ("Unknown arg: " <> arg)
+      putStrLn ""
+      showHelp
+    Parsed _ ->
+      putStrLn "Hello, agenda-txt!"
+
+showHelp :: IO ()
+showHelp = do
+  putStrLn "Usage: cat agenda.txt | agenda-txt {flags} [patterns]"
+  putStrLn ""
+  putStrLn "Flags"
+  putStrLn "  --help   Show this help text"
+  putStrLn "  --past   Show events going back in time"
+
+data ParsedArgsResult
+  = ShowHelp
+  | UnknownArg String
+  | Parsed ParsedArgs
+
+data ParsedArgs = ParsedArgs
+  { from :: Day,
+    direction :: Direction
+  }
+
+defaultParsedArgs :: IO ParsedArgs
+defaultParsedArgs =
+  ParsedArgs
+    <$> today
+    <*> pure Future
+
+parseArgs :: [String] -> ParsedArgs -> ParsedArgsResult
+parseArgs args parsed =
+  case args of
+    [] -> Parsed parsed
+    "--help" : _ -> ShowHelp
+    "--past" : rest -> parseArgs rest parsed {direction = Past}
+    arg : _ -> UnknownArg arg
 
 data RepeatFilter
   = DatePattern DatePattern
