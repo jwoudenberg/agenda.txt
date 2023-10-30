@@ -45,9 +45,11 @@ library
       attoparsec
     , base >=4.10.1.0 && <5
     , chronos
+    , containers
     , hedgehog
     , scientific
     , text
+    , torsor
   default-language: Haskell2010
 
 executable agenda-txt
@@ -71,9 +73,11 @@ executable agenda-txt
     , attoparsec
     , base >=4.10.1.0 && <5
     , chronos
+    , containers
     , hedgehog
     , scientific
     , text
+    , torsor
   default-language: Haskell2010
 
 test-suite spec
@@ -98,7 +102,9 @@ test-suite spec
     , attoparsec
     , base >=4.10.1.0 && <5
     , chronos
+    , containers
     , hedgehog
     , scientific
     , text
+    , torsor
   default-language: Haskell2010

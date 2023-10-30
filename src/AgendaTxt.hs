@@ -90,25 +90,25 @@ data DayRange
   = From Day Direction
   | Between Day Day
 
-eventsFrom :: DayRange -> [Event] -> [(Day, Event)]
-eventsFrom range events =
+eventsInRange :: DayRange -> [(Day -> EventOnDay, a)] -> [(Day, a)]
+eventsInRange range events =
   let (direction, days) =
         case range of
           From day' Future -> (Future, [day' ..])
           From day' Past -> (Past, [day', pred day' ..])
           Between start end -> (if start > end then Past else Future, [start .. end])
 
-      keepMatches :: [Day] -> [(Day, Event)] -> Event -> [(Day, Event)]
-      keepMatches [] acc _ = acc
-      keepMatches (day' : rest) acc event =
-        case eventOnDay day' event of
-          Match -> keepMatches rest ((day', event) : acc) event
-          NoMatch -> keepMatches rest acc event
+      keepMatches :: [Day] -> [(Day, a)] -> (Day -> EventOnDay) -> a -> [(Day, a)]
+      keepMatches [] acc _ _ = acc
+      keepMatches (day' : rest) acc isMatch x =
+        case isMatch day' of
+          Match -> keepMatches rest ((day', x) : acc) isMatch x
+          NoMatch -> keepMatches rest acc isMatch x
           NoFurtherMatches direction' ->
             if direction == direction'
               then acc
-              else keepMatches rest acc event
-   in foldMap (keepMatches days []) events
+              else keepMatches rest acc isMatch x
+   in foldMap (uncurry (keepMatches days [])) events
 
 data EventOnDay
   = Match
@@ -116,10 +116,10 @@ data EventOnDay
   | NoFurtherMatches Direction
   deriving (Eq, Ord)
 
-data Direction = Future | Past deriving (Eq, Ord)
+data Direction = Future | Past deriving (Show, Eq, Ord)
 
-eventOnDay :: Day -> Event -> EventOnDay
-eventOnDay day' event =
+eventOnDay :: Event -> Day -> EventOnDay
+eventOnDay event day' =
   case compare day' (startDay event) of
     EQ -> Match
     LT -> NoFurtherMatches Past

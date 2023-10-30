@@ -3,7 +3,8 @@ module Test (Test.main) where
 import AgendaTxt
 import Chronos hiding (day)
 import Data.Attoparsec.Text (parseOnly)
-import Data.List (intersperse)
+import Data.List (intersperse, sort)
+import qualified Data.Set as Set
 import Data.String (fromString)
 import Data.Text (Text)
 import qualified Data.Text.Lazy
@@ -13,12 +14,82 @@ import Hedgehog
 import Hedgehog.Gen as Gen
 import Hedgehog.Main (defaultMain)
 import Hedgehog.Range as Range
+import qualified Torsor
 
 main :: IO ()
 main =
   defaultMain
-    [ checkParallel (Group "parsing events" [("fuzzed events", fuzzedEventsTest)])
+    [ checkParallel (Group "parserEvent" [("fuzzed events", fuzzedEventsTest)]),
+      checkParallel
+        ( Group
+            "eventsInRange"
+            [ ("even days events", evenDaysEventsTest),
+              ("open-ended past date ranges", openEndedPastDateRangesTest),
+              ("open-ended future date ranges", openEndedFutureDateRangesTest)
+            ]
+        )
     ]
+
+openEndedPastDateRangesTest :: Property
+openEndedPastDateRangesTest = property $ do
+  start <- forAll genDay
+  eventDays <- forAll $ list (linear 0 10) $ do
+    onOrBeforeDays <- set (linear 0 10) $ genDayAround start (linearFrom 0 (-100) 0)
+    afterDays <- set (linear 0 10) $ genDayAround start (linearFrom 1 1 100)
+    pure (onOrBeforeDays, afterDays)
+  let allOnOrBeforeDays :: [Day] = foldMap (Set.toList . fst) eventDays
+  let dayRange = From start Past
+  let results = eventsInRange dayRange (toEvent () . uncurry (<>) <$> eventDays)
+  sort (fst <$> results) === allOnOrBeforeDays
+  pure ()
+
+openEndedFutureDateRangesTest :: Property
+openEndedFutureDateRangesTest = property $ do
+  start <- forAll genDay
+  eventDays <- forAll $ list (linear 0 10) $ do
+    beforeDays <- set (linear 0 10) $ genDayAround start (linearFrom (-1) (-100) (-1))
+    onOrAfterDays <- set (linear 0 10) $ genDayAround start (linearFrom 0 0 100)
+    pure (beforeDays, onOrAfterDays)
+  let allOnOrAfterDays :: [Day] = foldMap (Set.toList . snd) eventDays
+  let dayRange = From start Future
+  let results = eventsInRange dayRange (toEvent () . uncurry (<>) <$> eventDays)
+  sort (fst <$> results) === allOnOrAfterDays
+  pure ()
+
+toEvent :: a -> Set.Set Day -> (Day -> EventOnDay, a)
+toEvent tag days =
+  ( \day' ->
+      case day' of
+        _
+          | Just firstDay <- Set.lookupMin days,
+            day' < firstDay ->
+              NoFurtherMatches Past
+        _
+          | Just lastDay <- Set.lookupMax days,
+            day' > lastDay ->
+              NoFurtherMatches Past
+        _ | Set.member day' days -> Match
+        _ -> NoMatch,
+    tag
+  )
+
+evenDaysEventsTest :: Property
+evenDaysEventsTest = property $ do
+  start <- forAll genDay
+  end <- forAll $ genDayAround start (linearFrom 0 (-100) 100)
+  let dayRange = Between start end
+  let evenDay = even . getDay
+  let events = ((,) (\day' -> if evenDay day' then Match else NoMatch)) <$> ['a' .. 'j']
+  let results = eventsInRange dayRange events
+  let expected = do
+        day <- Prelude.filter evenDay [start .. end]
+        tag <- ['a' .. 'j']
+        pure (day, tag)
+  sort results === sort expected
+
+genDayAround :: Day -> Range Int -> Gen Day
+genDayAround base range =
+  flip Torsor.add base <$> int range
 
 fuzzedEventsTest :: Property
 fuzzedEventsTest = property $ do

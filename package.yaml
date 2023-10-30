@@ -36,9 +36,11 @@ dependencies:
 - base >= 4.10.1.0 && < 5
 - attoparsec
 - chronos
+- containers
 - hedgehog
 - scientific
 - text
+- torsor
 ghc-options:
 - -Wall
 - -Werror
