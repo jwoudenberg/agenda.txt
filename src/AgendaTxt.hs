@@ -5,7 +5,6 @@ import Data.Attoparsec.Text
 import Data.Char (isAlpha)
 import Data.Scientific (floatingOrInteger)
 import Data.Text
-import SortedList
 import System.Environment (getArgs)
 
 main :: IO ()
@@ -91,7 +90,7 @@ data DayRange
   = From Day Direction
   | Between Day Day
 
-eventsFrom :: DayRange -> SortedList Event -> [(Day, Event)]
+eventsFrom :: DayRange -> [Event] -> [(Day, Event)]
 eventsFrom range events =
   let (direction, days) =
         case range of
@@ -99,17 +98,17 @@ eventsFrom range events =
           From day' Past -> (Past, [day', pred day' ..])
           Between start end -> (if start > end then Past else Future, [start .. end])
 
-      keepMatches :: [(Day, Event)] -> [(Day, Event)] -> [(Day, Event)]
-      keepMatches [] _ = []
-      keepMatches (x : xs) acc =
-        case uncurry eventOnDay x of
-          Match -> keepMatches xs (x : acc)
-          NoMatch -> keepMatches xs acc
+      keepMatches :: [Day] -> [(Day, Event)] -> Event -> [(Day, Event)]
+      keepMatches [] acc _ = acc
+      keepMatches (day' : rest) acc event =
+        case eventOnDay day' event of
+          Match -> keepMatches rest ((day', event) : acc) event
+          NoMatch -> keepMatches rest acc event
           NoFurtherMatches direction' ->
             if direction == direction'
               then acc
-              else keepMatches xs acc
-   in foldMap (\event -> keepMatches [] $ fmap (,event) days) events
+              else keepMatches rest acc event
+   in foldMap (keepMatches days []) events
 
 data EventOnDay
   = Match

@@ -28,7 +28,6 @@ library
       AgendaTxt
       Test
   other-modules:
-      SortedList
       Paths_agenda_txt
   hs-source-dirs:
       src
