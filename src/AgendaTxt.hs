@@ -98,17 +98,45 @@ eventsInRange range events =
           From day' Past -> (Past, [day', pred day' ..])
           Between start end -> (if start > end then Past else Future, [start .. end])
 
-      keepMatches :: [Day] -> [(Day, a)] -> (Day -> EventOnDay) -> a -> [(Day, a)]
-      keepMatches [] acc _ _ = acc
-      keepMatches (day' : rest) acc isMatch x =
-        case isMatch day' of
-          Match -> keepMatches rest ((day', x) : acc) isMatch x
-          NoMatch -> keepMatches rest acc isMatch x
+      keepMatches ::
+        [(Day, a)] ->
+        [(Day -> EventOnDay, a)] ->
+        [Day] ->
+        [(Day -> EventOnDay, a)] ->
+        [(Day, a)]
+      keepMatches acc _ [] _ = acc
+      keepMatches acc [] _ [] = acc
+      keepMatches acc nextDayEvents (_ : nextDays) [] =
+        keepMatches acc [] nextDays (Prelude.reverse nextDayEvents)
+      keepMatches acc nextDayEvents (day' : nextDays) (event : nextEvents) =
+        case fst event day' of
+          Match ->
+            keepMatches
+              ((day', snd event) : acc)
+              (event : nextDayEvents)
+              (day' : nextDays)
+              nextEvents
+          NoMatch ->
+            keepMatches
+              acc
+              (event : nextDayEvents)
+              (day' : nextDays)
+              nextEvents
           NoFurtherMatches direction' ->
             if direction == direction'
-              then acc
-              else keepMatches rest acc isMatch x
-   in foldMap (uncurry (keepMatches days [])) events
+              then
+                keepMatches
+                  acc
+                  nextDayEvents
+                  (day' : nextDays)
+                  nextEvents
+              else
+                keepMatches
+                  acc
+                  (event : nextDayEvents)
+                  (day' : nextDays)
+                  nextEvents
+   in Prelude.reverse $ keepMatches [] [] days events
 
 data EventOnDay
   = Match

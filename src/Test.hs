@@ -23,73 +23,75 @@ main =
       checkParallel
         ( Group
             "eventsInRange"
-            [ ("even days events", evenDaysEventsTest),
-              ("open-ended past date ranges", openEndedPastDateRangesTest),
-              ("open-ended future date ranges", openEndedFutureDateRangesTest)
+            [ ("closed date ranges", closedDateRangesTest),
+              ("open-ended future date ranges", openEndedFutureDateRangesTest),
+              ("open-ended past date ranges", openEndedPastDateRangesTest)
             ]
         )
     ]
 
-openEndedPastDateRangesTest :: Property
-openEndedPastDateRangesTest = property $ do
+closedDateRangesTest :: Property
+closedDateRangesTest = property $ do
   start <- forAll genDay
-  eventDays <- forAll $ list (linear 0 10) $ do
-    onOrBeforeDays <- set (linear 0 10) $ genDayAround start (linearFrom 0 (-100) 0)
-    afterDays <- set (linear 0 10) $ genDayAround start (linearFrom 1 1 100)
-    pure (onOrBeforeDays, afterDays)
-  let allOnOrBeforeDays :: [Day] = foldMap (Set.toList . fst) eventDays
-  let dayRange = From start Past
-  let results = eventsInRange dayRange (toEvent () . uncurry (<>) <$> eventDays)
-  sort (fst <$> results) === allOnOrBeforeDays
-  pure ()
+  end <- forAll $ flip Torsor.add start <$> int (linearFrom 0 0 100)
+  events <-
+    forAll $
+      list (linear 0 10) $
+        getTestEvent
+          ()
+          (Torsor.add (-100) start)
+          (Torsor.add 100 end)
+  let allDuringDays =
+        Prelude.filter (\day' -> day' >= start && day' <= end) $
+          foldMap (Set.toList . eventDays) events
+  let results = eventsInRange (Between start end) (eventValue <$> events)
+  fmap fst results === sort allDuringDays
 
 openEndedFutureDateRangesTest :: Property
 openEndedFutureDateRangesTest = property $ do
   start <- forAll genDay
-  eventDays <- forAll $ list (linear 0 10) $ do
-    beforeDays <- set (linear 0 10) $ genDayAround start (linearFrom (-1) (-100) (-1))
-    onOrAfterDays <- set (linear 0 10) $ genDayAround start (linearFrom 0 0 100)
-    pure (beforeDays, onOrAfterDays)
-  let allOnOrAfterDays :: [Day] = foldMap (Set.toList . snd) eventDays
-  let dayRange = From start Future
-  let results = eventsInRange dayRange (toEvent () . uncurry (<>) <$> eventDays)
-  sort (fst <$> results) === allOnOrAfterDays
-  pure ()
+  events <-
+    forAll $
+      list (linear 0 10) $
+        getTestEvent
+          ()
+          (Torsor.add (-100) start)
+          (Torsor.add 100 start)
+  let allOnOrAfterDays = Prelude.filter (>= start) $ foldMap (Set.toList . eventDays) events
+  let results = eventsInRange (From start Future) (eventValue <$> events)
+  fmap fst results === sort allOnOrAfterDays
 
-toEvent :: a -> Set.Set Day -> (Day -> EventOnDay, a)
-toEvent tag days =
-  ( \day' ->
-      case day' of
-        _
-          | Just firstDay <- Set.lookupMin days,
-            day' < firstDay ->
-              NoFurtherMatches Past
-        _
-          | Just lastDay <- Set.lookupMax days,
-            day' > lastDay ->
-              NoFurtherMatches Past
-        _ | Set.member day' days -> Match
-        _ -> NoMatch,
-    tag
-  )
-
-evenDaysEventsTest :: Property
-evenDaysEventsTest = property $ do
+openEndedPastDateRangesTest :: Property
+openEndedPastDateRangesTest = property $ do
   start <- forAll genDay
-  end <- forAll $ genDayAround start (linearFrom 0 (-100) 100)
-  let dayRange = Between start end
-  let evenDay = even . getDay
-  let events = ((,) (\day' -> if evenDay day' then Match else NoMatch)) <$> ['a' .. 'j']
-  let results = eventsInRange dayRange events
-  let expected = do
-        day <- Prelude.filter evenDay [start .. end]
-        tag <- ['a' .. 'j']
-        pure (day, tag)
-  sort results === sort expected
+  events <-
+    forAll $
+      list (linear 0 10) $
+        getTestEvent
+          ()
+          (Torsor.add (-100) start)
+          (Torsor.add 100 start)
+  let allOnOrBeforeDays = Prelude.filter (<= start) $ foldMap (Set.toList . eventDays) events
+  let results = eventsInRange (From start Past) (eventValue <$> events)
+  fmap fst results === reverse (sort allOnOrBeforeDays)
 
-genDayAround :: Day -> Range Int -> Gen Day
-genDayAround base range =
-  flip Torsor.add base <$> int range
+data TestEvent a = TestEvent
+  { eventTag :: a,
+    eventDays :: Set.Set Day
+  }
+  deriving (Show)
+
+getTestEvent :: a -> Day -> Day -> Gen (TestEvent a)
+getTestEvent tag start end = do
+  TestEvent tag <$> set (linear 1 10) (enum start end)
+
+eventValue :: TestEvent a -> (Day -> EventOnDay, a)
+eventValue TestEvent {eventTag, eventDays} =
+  let isMatch day' | day' < Set.findMin eventDays = NoFurtherMatches Past
+      isMatch day' | day' > Set.findMax eventDays = NoFurtherMatches Future
+      isMatch day' | Set.member day' eventDays = Match
+      isMatch _ = NoMatch
+   in (isMatch, eventTag)
 
 fuzzedEventsTest :: Property
 fuzzedEventsTest = property $ do
