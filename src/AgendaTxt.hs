@@ -3,13 +3,17 @@ module AgendaTxt where
 import Chronos
 import Data.Attoparsec.Text
 import Data.Char (isAlpha)
+import Data.Foldable (traverse_)
 import Data.Scientific (floatingOrInteger)
 import Data.Text
+import Data.Text.IO (hGetLine)
 import System.Environment (getArgs)
+import System.IO (hIsEOF, stdin)
+import Text.Read (readMaybe)
 
 main :: IO ()
 main = do
-  parsedArgs <- parseArgs <$> getArgs <*> defaultParsedArgs
+  parsedArgs <- parseArgs defaultParsedArgs <$> getArgs
   case parsedArgs of
     ShowHelp -> do
       putStrLn "Parse plain text agenda.txt files."
@@ -19,16 +23,17 @@ main = do
       putStrLn ("Unknown arg: " <> arg)
       putStrLn ""
       showHelp
-    Parsed _ ->
-      putStrLn "Hello, agenda-txt!"
+    Parsed result ->
+      run result
 
 showHelp :: IO ()
 showHelp = do
   putStrLn "Usage: cat agenda.txt | agenda-txt {flags} [patterns]"
   putStrLn ""
   putStrLn "Flags"
-  putStrLn "  --help   Show this help text"
-  putStrLn "  --past   Show events going back in time"
+  putStrLn "  --help      Show this help text"
+  putStrLn "  --past      Show events going back in time"
+  putStrLn "  --max <n>   The maximum amount of events to show"
 
 data ParsedArgsResult
   = ShowHelp
@@ -36,23 +41,59 @@ data ParsedArgsResult
   | Parsed ParsedArgs
 
 data ParsedArgs = ParsedArgs
-  { from :: Day,
-    direction :: Direction
+  { direction :: Direction,
+    maxEvents :: Word
   }
 
-defaultParsedArgs :: IO ParsedArgs
+defaultParsedArgs :: ParsedArgs
 defaultParsedArgs =
   ParsedArgs
-    <$> today
-    <*> pure Future
+    { direction = Future,
+      maxEvents = 30
+    }
 
-parseArgs :: [String] -> ParsedArgs -> ParsedArgsResult
-parseArgs args parsed =
+parseArgs :: ParsedArgs -> [String] -> ParsedArgsResult
+parseArgs parsed args =
   case args of
     [] -> Parsed parsed
-    "--help" : _ -> ShowHelp
-    "--past" : rest -> parseArgs rest parsed {direction = Past}
-    arg : _ -> UnknownArg arg
+    "--help" : _ ->
+      ShowHelp
+    "--past" : rest ->
+      parseArgs parsed {direction = Past} rest
+    "--max" : maxEventsStr : rest ->
+      case readMaybe maxEventsStr of
+        Just maxEvents -> parseArgs parsed {maxEvents = maxEvents} rest
+        Nothing -> UnknownArg ("--max " <> maxEventsStr)
+    arg : _ ->
+      UnknownArg arg
+
+run :: ParsedArgs -> IO ()
+run ParsedArgs {direction, maxEvents} = do
+  (errs, events) <- readEvents [] []
+  traverse_ (\err -> do putStr "Warning: "; putStrLn err) errs
+  today' <- today
+  let firstDay = Prelude.minimum (startDay <$> events)
+  let dayRange =
+        case direction of
+          Future -> From firstDay Future
+          Past -> From today' Past
+  let events' =
+        Prelude.take (fromIntegral maxEvents) $
+          eventsInRange
+            dayRange
+            (fmap (\event -> (eventOnDay event, event)) events)
+  traverse_ (\event -> putStrLn (show event)) events'
+
+readEvents :: [String] -> [Event] -> IO ([String], [Event])
+readEvents errs events = do
+  isEOF <- hIsEOF stdin
+  if isEOF
+    then pure (errs, events)
+    else do
+      line <- hGetLine stdin
+      case parseOnly (parserEvent <* endOfInput) line of
+        Left err -> readEvents (err : errs) events
+        Right event -> readEvents errs (event : events)
 
 data RepeatFilter
   = DatePattern DatePattern
@@ -70,7 +111,7 @@ data DatePattern = DatePattern_
 
 data EventTime = EventTime
   { startTime :: TimeOfDay,
-    durationMinutes :: Maybe Int,
+    durationMinutes :: Maybe Word,
     timezone :: Maybe Text
   }
   deriving (Eq, Show)
@@ -196,7 +237,7 @@ parserDatePattern = do
   day_ <- option Nothing (Just . DayOfMonth <$> parserInt)
   pure $ DatePattern_ year month day_
 
-parserInt :: Parser Int
+parserInt :: (Integral i) => Parser i
 parserInt = do
   next <- peekChar'
   if next == '-'
@@ -216,7 +257,7 @@ parserTime =
     <* skipSpace
     <*> option Nothing (Just <$> parserTimezone)
 
-parserDuration :: Parser Int
+parserDuration :: Parser Word
 parserDuration = do
   _ <- char '+'
   hours <- parserInt

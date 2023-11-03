@@ -170,7 +170,7 @@ builderDatePattern datePattern =
     <> pure "-"
     <> Prelude.maybe mempty (builderInt . getDayOfMonth) (day datePattern)
 
-builderInt :: Int -> Gen Builder
+builderInt :: (Show i) => i -> Gen Builder
 builderInt = pure . fromString . show
 
 builderTime :: EventTime -> Gen Builder
@@ -185,7 +185,7 @@ builderTimeOfDay :: TimeOfDay -> Gen Builder
 builderTimeOfDay timeOfDay =
   pure $ builder_HMS SubsecondPrecisionAuto (Just ':') timeOfDay
 
-builderDuration :: Int -> Gen Builder
+builderDuration :: Word -> Gen Builder
 builderDuration minutes =
   pure "+"
     <> builderInt (minutes `div` 60)
@@ -230,7 +230,7 @@ genEventTime :: Gen EventTime
 genEventTime =
   EventTime
     <$> genTimeOfDay
-    <*> Gen.maybe (int (Range.linear 0 1400))
+    <*> Gen.maybe (word (Range.linear 0 1400))
     <*> Gen.maybe (text (Range.linear 2 4) upper)
 
 genTimeOfDay :: Gen TimeOfDay
