@@ -25,7 +25,9 @@ main =
             "eventsInRange"
             [ ("closed date ranges", closedDateRangesTest),
               ("open-ended future date ranges", openEndedFutureDateRangesTest),
-              ("open-ended past date ranges", openEndedPastDateRangesTest)
+              ("open-ended past date ranges", openEndedPastDateRangesTest),
+              ("open-ended future infinite event", openEndedFutureInfiniteEventTest),
+              ("open-ended future infinite event", openEndedPastInfiniteEventTest)
             ]
         )
     ]
@@ -74,6 +76,20 @@ openEndedPastDateRangesTest = property $ do
   let allOnOrBeforeDays = Prelude.filter (<= start) $ foldMap (Set.toList . eventDays) events
   let results = eventsInRange (From start Past) (eventValue <$> events)
   fmap fst results === reverse (sort allOnOrBeforeDays)
+
+openEndedFutureInfiniteEventTest :: Property
+openEndedFutureInfiniteEventTest = property $ do
+  start <- forAll genDay
+  let event = (\_ -> Match, ())
+  let results = eventsInRange (From start Future) [event]
+  take 10 results === take 10 (zip [start ..] (repeat ()))
+
+openEndedPastInfiniteEventTest :: Property
+openEndedPastInfiniteEventTest = property $ do
+  start <- forAll genDay
+  let event = (\_ -> Match, ())
+  let results = eventsInRange (From start Past) [event]
+  take 10 results === take 10 (zip [start, pred start ..] (repeat ()))
 
 data TestEvent a = TestEvent
   { eventTag :: a,

@@ -99,44 +99,27 @@ eventsInRange range events =
           Between start end -> (if start > end then Past else Future, [start .. end])
 
       keepMatches ::
-        [(Day, a)] ->
         [(Day -> EventOnDay, a)] ->
         [Day] ->
         [(Day -> EventOnDay, a)] ->
         [(Day, a)]
-      keepMatches acc _ [] _ = acc
-      keepMatches acc [] _ [] = acc
-      keepMatches acc nextDayEvents (_ : nextDays) [] =
-        keepMatches acc [] nextDays (Prelude.reverse nextDayEvents)
-      keepMatches acc nextDayEvents (day' : nextDays) (event : nextEvents) =
+      keepMatches _ [] _ = []
+      keepMatches [] _ [] = []
+      keepMatches nextDayEvents (_ : nextDays) [] =
+        keepMatches [] nextDays (Prelude.reverse nextDayEvents)
+      keepMatches nextDayEvents (day' : nextDays) (event : nextEvents) =
         case fst event day' of
           Match ->
-            keepMatches
-              ((day', snd event) : acc)
-              (event : nextDayEvents)
-              (day' : nextDays)
-              nextEvents
+            -- Intentionally do not use tail-recursion here, so we can lazily
+            -- consume from the output of this function.
+            (day', snd event) : keepMatches (event : nextDayEvents) (day' : nextDays) nextEvents
           NoMatch ->
-            keepMatches
-              acc
-              (event : nextDayEvents)
-              (day' : nextDays)
-              nextEvents
+            keepMatches (event : nextDayEvents) (day' : nextDays) nextEvents
           NoFurtherMatches direction' ->
             if direction == direction'
-              then
-                keepMatches
-                  acc
-                  nextDayEvents
-                  (day' : nextDays)
-                  nextEvents
-              else
-                keepMatches
-                  acc
-                  (event : nextDayEvents)
-                  (day' : nextDays)
-                  nextEvents
-   in Prelude.reverse $ keepMatches [] [] days events
+              then keepMatches nextDayEvents (day' : nextDays) nextEvents
+              else keepMatches (event : nextDayEvents) (day' : nextDays) nextEvents
+   in keepMatches [] days events
 
 data EventOnDay
   = Match
