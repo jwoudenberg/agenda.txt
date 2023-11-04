@@ -4,6 +4,7 @@ import Chronos
 import Data.Attoparsec.Text
 import Data.Char (isAlpha)
 import Data.Foldable (traverse_)
+import Data.Maybe (catMaybes)
 import Data.Scientific (floatingOrInteger)
 import Data.Text
 import Data.Text.IO (hGetLine)
@@ -72,17 +73,19 @@ run ParsedArgs {direction, maxEvents} = do
   (errs, events) <- readEvents [] []
   traverse_ (\err -> do putStr "Warning: "; putStrLn err) errs
   today' <- today
-  let firstDay = Prelude.minimum (startDay <$> events)
-  let dayRange =
-        case direction of
-          Future -> From firstDay Future
-          Past -> From today' Past
-  let events' =
-        Prelude.take (fromIntegral maxEvents) $
-          eventsInRange
-            dayRange
-            (fmap (\event -> (eventOnDay event, event)) events)
-  traverse_ (\event -> putStrLn (show event)) events'
+  case minimum' (startDay <$> events) of
+    Nothing -> pure ()
+    Just firstDay ->
+      let dayRange =
+            case direction of
+              Future -> From firstDay Future
+              Past -> From today' Past
+          events' =
+            Prelude.take (fromIntegral maxEvents) $
+              occurrences
+                dayRange
+                (fmap eventToRecurrence events)
+       in traverse_ (\event -> putStrLn (show event)) events'
 
 readEvents :: [String] -> [Event] -> IO ([String], [Event])
 readEvents errs events = do
@@ -131,65 +134,96 @@ data DayRange
   = From Day Direction
   | Between Day Day
 
-eventsInRange :: DayRange -> [(Day -> EventOnDay, a)] -> [(Day, a)]
-eventsInRange range events =
-  let (direction, days) =
-        case range of
-          From day' Future -> (Future, [day' ..])
-          From day' Past -> (Past, [day', pred day' ..])
-          Between start end -> (if start > end then Past else Future, [start .. end])
+data Recurrence a = Recurrence
+  { onDay :: Day -> Bool,
+    event :: a,
+    minDay :: Maybe Day,
+    maxDay :: Maybe Day
+  }
 
-      keepMatches ::
-        [(Day -> EventOnDay, a)] ->
-        [Day] ->
-        [(Day -> EventOnDay, a)] ->
-        [(Day, a)]
-      keepMatches _ [] _ = []
-      keepMatches [] _ [] = []
-      keepMatches nextDayEvents (_ : nextDays) [] =
-        keepMatches [] nextDays (Prelude.reverse nextDayEvents)
-      keepMatches nextDayEvents (day' : nextDays) (event : nextEvents) =
-        case fst event day' of
-          Match ->
-            -- Intentionally do not use tail-recursion here, so we can lazily
-            -- consume from the output of this function.
-            (day', snd event) : keepMatches (event : nextDayEvents) (day' : nextDays) nextEvents
-          NoMatch ->
-            keepMatches (event : nextDayEvents) (day' : nextDays) nextEvents
-          NoFurtherMatches direction' ->
-            if direction == direction'
-              then keepMatches nextDayEvents (day' : nextDays) nextEvents
-              else keepMatches (event : nextDayEvents) (day' : nextDays) nextEvents
-   in keepMatches [] days events
+occurrences :: DayRange -> [Recurrence a] -> [(Day, a)]
+occurrences range recurrences =
+  gen [] days recurrences
+  where
+    (direction, days) =
+      case range of
+        From day' Future -> (Future, [day' ..])
+        From day' Past -> (Past, [day', pred day' ..])
+        Between start end -> (if start > end then Past else Future, [start .. end])
 
-data EventOnDay
-  = Match
-  | NoMatch
-  | NoFurtherMatches Direction
-  deriving (Eq, Ord)
+    gen ::
+      [Recurrence a] ->
+      [Day] ->
+      [Recurrence a] ->
+      [(Day, a)]
+    gen _ [] _ = []
+    gen [] _ [] = []
+    gen nextDayRecurrences (_ : nextDays) [] =
+      gen [] nextDays (Prelude.reverse nextDayRecurrences)
+    gen nextDayRecurrences days'@(day' : _) (recurrence : nextRecurrences)
+      | onDay recurrence day' =
+          -- Intentionally do not use tail-recursion here, so we can lazily
+          -- consume from the output of this function.
+          (day', event recurrence) : gen (recurrence : nextDayRecurrences) days' nextRecurrences
+    gen nextDayRecurrences days'@(day' : _) (recurrence : nextRecurrences)
+      | direction == Past,
+        Just minDay' <- minDay recurrence,
+        day' < minDay' =
+          gen nextDayRecurrences days' nextRecurrences
+    gen nextDayRecurrences days'@(day' : _) (recurrence : nextRecurrences)
+      | direction == Future,
+        Just maxDay' <- maxDay recurrence,
+        day' > maxDay' =
+          gen nextDayRecurrences days' nextRecurrences
+    gen nextDayRecurrences days' (recurrence : nextRecurrences) =
+      gen (recurrence : nextDayRecurrences) days' nextRecurrences
 
 data Direction = Future | Past deriving (Show, Eq, Ord)
 
-eventOnDay :: Event -> Day -> EventOnDay
-eventOnDay event day' =
-  case compare day' (startDay event) of
-    EQ -> Match
-    LT -> NoFurtherMatches Past
-    GT ->
-      Prelude.foldr
-        (max . matchesFilter day' (dayToDate day'))
-        Match
-        (repeatRule event)
+eventToRecurrence :: Event -> Recurrence Event
+eventToRecurrence event =
+  case repeatRule event of
+    [] ->
+      Recurrence
+        { onDay = (startDay event ==),
+          event = event,
+          minDay = Just (startDay event),
+          maxDay = Just (startDay event)
+        }
+    rules ->
+      Recurrence
+        { onDay =
+            \day' ->
+              Prelude.all
+                (matchesFilter day' (dayToDate day'))
+                rules,
+          event = event,
+          minDay = Just (startDay event),
+          maxDay = maximum' $ catMaybes $ fmap filterUpperBound $ rules
+        }
 
-matchesFilter :: Day -> Date -> RepeatFilter -> EventOnDay
-matchesFilter _ date (DatePattern pattern) =
-  if matchesPattern date pattern then Match else NoMatch
-matchesFilter _ date (NotDatePattern pattern) =
-  if matchesPattern date pattern then NoMatch else Match
-matchesFilter _ date (WeekDay weekDay) =
-  if weekDay == dateToDayOfWeek date then Match else NoMatch
-matchesFilter day' _ (EndDate endDate) =
-  if day' > endDate then NoFurtherMatches Future else Match
+minimum' :: (Foldable f, Ord a) => f a -> Maybe a
+minimum' = Prelude.foldr keepLower Nothing
+  where
+    keepLower :: (Ord a) => a -> Maybe a -> Maybe a
+    keepLower x Nothing = Just x
+    keepLower x (Just y) = if x < y then Just x else Just y
+
+maximum' :: (Foldable f, Ord a) => f a -> Maybe a
+maximum' = Prelude.foldr keepUpper Nothing
+  where
+    keepUpper :: (Ord a) => a -> Maybe a -> Maybe a
+    keepUpper x Nothing = Just x
+    keepUpper x (Just y) = if x > y then Just x else Just y
+
+filterUpperBound :: RepeatFilter -> Maybe Day
+filterUpperBound = undefined
+
+matchesFilter :: Day -> Date -> RepeatFilter -> Bool
+matchesFilter _ date (DatePattern pattern) = matchesPattern date pattern
+matchesFilter _ date (NotDatePattern pattern) = not (matchesPattern date pattern)
+matchesFilter _ date (WeekDay weekDay) = weekDay == dateToDayOfWeek date
+matchesFilter day' _ (EndDate endDate) = day' <= endDate
 
 matchesPattern :: Date -> DatePattern -> Bool
 matchesPattern date pattern =

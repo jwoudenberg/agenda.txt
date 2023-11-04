@@ -22,7 +22,7 @@ main =
     [ checkParallel (Group "parserEvent" [("fuzzed events", fuzzedEventsTest)]),
       checkParallel
         ( Group
-            "eventsInRange"
+            "occurrences"
             [ ("closed date ranges", closedDateRangesTest),
               ("open-ended future date ranges", openEndedFutureDateRangesTest),
               ("open-ended past date ranges", openEndedPastDateRangesTest),
@@ -46,7 +46,7 @@ closedDateRangesTest = property $ do
   let allDuringDays =
         Prelude.filter (\day' -> day' >= start && day' <= end) $
           foldMap (Set.toList . eventDays) events
-  let results = eventsInRange (Between start end) (eventValue <$> events)
+  let results = occurrences (Between start end) (testEventToRecurrence <$> events)
   fmap fst results === sort allDuringDays
 
 openEndedFutureDateRangesTest :: Property
@@ -60,7 +60,7 @@ openEndedFutureDateRangesTest = property $ do
           (Torsor.add (-100) start)
           (Torsor.add 100 start)
   let allOnOrAfterDays = Prelude.filter (>= start) $ foldMap (Set.toList . eventDays) events
-  let results = eventsInRange (From start Future) (eventValue <$> events)
+  let results = occurrences (From start Future) (testEventToRecurrence <$> events)
   fmap fst results === sort allOnOrAfterDays
 
 openEndedPastDateRangesTest :: Property
@@ -74,22 +74,29 @@ openEndedPastDateRangesTest = property $ do
           (Torsor.add (-100) start)
           (Torsor.add 100 start)
   let allOnOrBeforeDays = Prelude.filter (<= start) $ foldMap (Set.toList . eventDays) events
-  let results = eventsInRange (From start Past) (eventValue <$> events)
+  let results = occurrences (From start Past) (testEventToRecurrence <$> events)
   fmap fst results === reverse (sort allOnOrBeforeDays)
 
 openEndedFutureInfiniteEventTest :: Property
 openEndedFutureInfiniteEventTest = property $ do
   start <- forAll genDay
-  let event = (\_ -> Match, ())
-  let results = eventsInRange (From start Future) [event]
+  let results = occurrences (From start Future) [alwaysRecurrence ()]
   take 10 results === take 10 (zip [start ..] (repeat ()))
 
 openEndedPastInfiniteEventTest :: Property
 openEndedPastInfiniteEventTest = property $ do
   start <- forAll genDay
-  let event = (\_ -> Match, ())
-  let results = eventsInRange (From start Past) [event]
+  let results = occurrences (From start Past) [alwaysRecurrence ()]
   take 10 results === take 10 (zip [start, pred start ..] (repeat ()))
+
+alwaysRecurrence :: a -> Recurrence a
+alwaysRecurrence event =
+  Recurrence
+    { onDay = \_ -> True,
+      event = event,
+      minDay = Nothing,
+      maxDay = Nothing
+    }
 
 data TestEvent a = TestEvent
   { eventTag :: a,
@@ -101,13 +108,14 @@ getTestEvent :: a -> Day -> Day -> Gen (TestEvent a)
 getTestEvent tag start end = do
   TestEvent tag <$> set (linear 1 10) (enum start end)
 
-eventValue :: TestEvent a -> (Day -> EventOnDay, a)
-eventValue TestEvent {eventTag, eventDays} =
-  let isMatch day' | day' < Set.findMin eventDays = NoFurtherMatches Past
-      isMatch day' | day' > Set.findMax eventDays = NoFurtherMatches Future
-      isMatch day' | Set.member day' eventDays = Match
-      isMatch _ = NoMatch
-   in (isMatch, eventTag)
+testEventToRecurrence :: TestEvent a -> Recurrence a
+testEventToRecurrence TestEvent {eventTag, eventDays} =
+  Recurrence
+    { onDay = flip Set.member eventDays,
+      event = eventTag,
+      minDay = Set.lookupMin eventDays,
+      maxDay = Set.lookupMax eventDays
+    }
 
 fuzzedEventsTest :: Property
 fuzzedEventsTest = property $ do
