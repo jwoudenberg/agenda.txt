@@ -269,7 +269,7 @@ parserDatePattern :: Parser DatePattern
 parserDatePattern = do
   year <- option Nothing (Just . Year <$> parserInt)
   _ <- char '-'
-  month <- option Nothing (Just . Month <$> parserInt)
+  month <- option Nothing (Just . Month . (\m -> m - 1) <$> parserInt)
   _ <- char '-'
   day_ <- option Nothing (Just . DayOfMonth <$> parserInt)
   pure $ DatePattern_ year month day_

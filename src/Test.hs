@@ -181,7 +181,7 @@ builderDatePattern :: DatePattern -> Gen Builder
 builderDatePattern datePattern =
   Prelude.maybe mempty (builderInt . getYear) (year datePattern)
     <> pure "-"
-    <> Prelude.maybe mempty (builderInt . getMonth) (month datePattern)
+    <> Prelude.maybe mempty (builderInt . (+) 1 . getMonth) (month datePattern)
     <> pure "-"
     <> Prelude.maybe mempty (builderInt . getDayOfMonth) (day datePattern)
 
