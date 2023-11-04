@@ -9,6 +9,8 @@ import Data.Foldable (for_)
 import Data.Maybe (catMaybes)
 import Data.Scientific (floatingOrInteger)
 import Data.Text (Text)
+import Data.Text.Lazy (toStrict)
+import Data.Text.Lazy.Builder (toLazyText)
 import System.Environment (getArgs)
 import System.Timeout (timeout)
 
@@ -72,7 +74,9 @@ run ParsedArgs {direction} = do
         .| concatMapMC (eventOrWarning . parseLine)
         .| mapC eventToRecurrence
         .| occurrences today' direction
-        .| mapM_C (putStrLn . show)
+        .| printOccurrences
+        .| encodeUtf8C
+        .| stdoutC
   case res of
     Just () -> pure ()
     Nothing -> putStrLn "   ... more ..."
@@ -85,6 +89,16 @@ eventOrWarning (Right event) = pure (Just event)
 
 parseLine :: Text -> Either String Event
 parseLine = parseOnly (parserEvent <* endOfInput)
+
+printOccurrences :: (Monad m) => ConduitT (Day, Event) Text m ()
+printOccurrences = do
+  occurrence <- headC
+  whenJust occurrence $ \(day', event) -> do
+    yield . toStrict . toLazyText $ builder_Ymd (Just '-') (dayToDate day')
+    yield " "
+    yield $ description event
+    yield "\n"
+    printOccurrences
 
 data RepeatFilter
   = DatePattern DatePattern
