@@ -33,7 +33,7 @@ showHelp = do
   putStrLn ""
   putStrLn "Flags"
   putStrLn "  --help      Show this help text"
-  putStrLn "  --past      Show events going back in time"
+  putStrLn "  --past      Show past instead of future events"
   putStrLn "  --max <n>   The maximum amount of events to show"
 
 data ParsedArgsResult
