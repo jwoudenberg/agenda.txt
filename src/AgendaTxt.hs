@@ -10,7 +10,7 @@ import Data.Maybe (catMaybes)
 import Data.Scientific (floatingOrInteger)
 import Data.Text (Text)
 import System.Environment (getArgs)
-import Text.Read (readMaybe)
+import System.Timeout (timeout)
 
 main :: IO ()
 main = do
@@ -34,7 +34,6 @@ showHelp = do
   putStrLn "Flags"
   putStrLn "  --help      Show this help text"
   putStrLn "  --past      Show past instead of future events"
-  putStrLn "  --max <n>   The maximum amount of events to show"
 
 data ParsedArgsResult
   = ShowHelp
@@ -42,15 +41,13 @@ data ParsedArgsResult
   | Parsed ParsedArgs
 
 data ParsedArgs = ParsedArgs
-  { direction :: Direction,
-    maxEvents :: Word
+  { direction :: Direction
   }
 
 defaultParsedArgs :: ParsedArgs
 defaultParsedArgs =
   ParsedArgs
-    { direction = Future,
-      maxEvents = 30
+    { direction = Future
     }
 
 parseArgs :: ParsedArgs -> [String] -> ParsedArgsResult
@@ -61,25 +58,24 @@ parseArgs parsed args =
       ShowHelp
     "--past" : rest ->
       parseArgs parsed {direction = Past} rest
-    "--max" : maxEventsStr : rest ->
-      case readMaybe maxEventsStr of
-        Just maxEvents -> parseArgs parsed {maxEvents = maxEvents} rest
-        Nothing -> UnknownArg ("--max " <> maxEventsStr)
     arg : _ ->
       UnknownArg arg
 
 run :: ParsedArgs -> IO ()
-run ParsedArgs {direction, maxEvents} = do
+run ParsedArgs {direction} = do
   today' <- today
-  runConduit $
-    stdinC
-      .| decodeUtf8LenientC
-      .| linesUnboundedC
-      .| concatMapMC (eventOrWarning . parseLine)
-      .| mapC eventToRecurrence
-      .| occurrences today' direction
-      .| takeC (fromIntegral maxEvents)
-      .| mapM_C (putStrLn . show)
+  res <-
+    timeout 100_000 . runConduit $
+      stdinC
+        .| decodeUtf8LenientC
+        .| linesUnboundedC
+        .| concatMapMC (eventOrWarning . parseLine)
+        .| mapC eventToRecurrence
+        .| occurrences today' direction
+        .| mapM_C (putStrLn . show)
+  case res of
+    Just () -> pure ()
+    Nothing -> putStrLn "   ... more ..."
 
 eventOrWarning :: Either String Event -> IO (Maybe Event)
 eventOrWarning (Left warning) = do
