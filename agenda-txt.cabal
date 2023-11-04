@@ -45,6 +45,7 @@ library
       attoparsec
     , base >=4.10.1.0 && <5
     , chronos
+    , conduit
     , containers
     , hedgehog
     , scientific
@@ -73,6 +74,7 @@ executable agenda-txt
     , attoparsec
     , base >=4.10.1.0 && <5
     , chronos
+    , conduit
     , containers
     , hedgehog
     , scientific
@@ -102,6 +104,7 @@ test-suite spec
     , attoparsec
     , base >=4.10.1.0 && <5
     , chronos
+    , conduit
     , containers
     , hedgehog
     , scientific

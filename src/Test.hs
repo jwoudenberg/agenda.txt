@@ -2,6 +2,7 @@ module Test (Test.main) where
 
 import AgendaTxt
 import Chronos hiding (day)
+import Conduit
 import Data.Attoparsec.Text (parseOnly)
 import Data.List (intersperse, sort)
 import qualified Data.Set as Set
@@ -23,34 +24,16 @@ main =
       checkParallel
         ( Group
             "occurrences"
-            [ ("closed date ranges", closedDateRangesTest),
-              ("open-ended future date ranges", openEndedFutureDateRangesTest),
-              ("open-ended past date ranges", openEndedPastDateRangesTest),
-              ("open-ended future infinite event", openEndedFutureInfiniteEventTest),
-              ("open-ended future infinite event", openEndedPastInfiniteEventTest)
+            [ ("future date ranges", futureDateRangesTest),
+              ("past date ranges", pastDateRangesTest),
+              ("future infinite event", futureInfiniteEventTest),
+              ("future infinite event", pastInfiniteEventTest)
             ]
         )
     ]
 
-closedDateRangesTest :: Property
-closedDateRangesTest = property $ do
-  start <- forAll genDay
-  end <- forAll $ flip Torsor.add start <$> int (linearFrom 0 0 100)
-  events <-
-    forAll $
-      list (linear 0 10) $
-        getTestEvent
-          ()
-          (Torsor.add (-100) start)
-          (Torsor.add 100 end)
-  let allDuringDays =
-        Prelude.filter (\day' -> day' >= start && day' <= end) $
-          foldMap (Set.toList . eventDays) events
-  let results = occurrences (Between start end) (testEventToRecurrence <$> events)
-  fmap fst results === sort allDuringDays
-
-openEndedFutureDateRangesTest :: Property
-openEndedFutureDateRangesTest = property $ do
+futureDateRangesTest :: Property
+futureDateRangesTest = property $ do
   start <- forAll genDay
   events <-
     forAll $
@@ -60,11 +43,17 @@ openEndedFutureDateRangesTest = property $ do
           (Torsor.add (-100) start)
           (Torsor.add 100 start)
   let allOnOrAfterDays = Prelude.filter (>= start) $ foldMap (Set.toList . eventDays) events
-  let results = occurrences (From start Future) (testEventToRecurrence <$> events)
-  fmap fst results === sort allOnOrAfterDays
+  let results =
+        runConduitPure $
+          yieldMany events
+            .| mapC testEventToRecurrence
+            .| occurrences start Future
+            .| mapC fst
+            .| sinkList
+  results === sort allOnOrAfterDays
 
-openEndedPastDateRangesTest :: Property
-openEndedPastDateRangesTest = property $ do
+pastDateRangesTest :: Property
+pastDateRangesTest = property $ do
   start <- forAll genDay
   events <-
     forAll $
@@ -74,20 +63,38 @@ openEndedPastDateRangesTest = property $ do
           (Torsor.add (-100) start)
           (Torsor.add 100 start)
   let allOnOrBeforeDays = Prelude.filter (<= start) $ foldMap (Set.toList . eventDays) events
-  let results = occurrences (From start Past) (testEventToRecurrence <$> events)
-  fmap fst results === reverse (sort allOnOrBeforeDays)
+  let results =
+        runConduitPure $
+          yieldMany events
+            .| mapC testEventToRecurrence
+            .| occurrences start Past
+            .| mapC fst
+            .| sinkList
+  results === reverse (sort allOnOrBeforeDays)
 
-openEndedFutureInfiniteEventTest :: Property
-openEndedFutureInfiniteEventTest = property $ do
+futureInfiniteEventTest :: Property
+futureInfiniteEventTest = property $ do
   start <- forAll genDay
-  let results = occurrences (From start Future) [alwaysRecurrence ()]
-  take 10 results === take 10 (zip [start ..] (repeat ()))
+  let results =
+        runConduitPure $
+          yield (alwaysRecurrence ())
+            .| occurrences start Future
+            .| takeC 10
+            .| mapC fst
+            .| sinkList
+  results === take 10 [start ..]
 
-openEndedPastInfiniteEventTest :: Property
-openEndedPastInfiniteEventTest = property $ do
+pastInfiniteEventTest :: Property
+pastInfiniteEventTest = property $ do
   start <- forAll genDay
-  let results = occurrences (From start Past) [alwaysRecurrence ()]
-  take 10 results === take 10 (zip [start, pred start ..] (repeat ()))
+  let results =
+        runConduitPure $
+          yield (alwaysRecurrence ())
+            .| occurrences start Past
+            .| takeC 10
+            .| mapC fst
+            .| sinkList
+  results === take 10 [start, pred start ..]
 
 alwaysRecurrence :: a -> Recurrence a
 alwaysRecurrence event =

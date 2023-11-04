@@ -36,6 +36,7 @@ dependencies:
 - base >= 4.10.1.0 && < 5
 - attoparsec
 - chronos
+- conduit
 - containers
 - hedgehog
 - scientific

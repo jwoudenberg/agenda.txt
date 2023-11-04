@@ -1,15 +1,15 @@
 module AgendaTxt where
 
 import Chronos
+import Conduit
+import Control.Monad (when)
 import Data.Attoparsec.Text
 import Data.Char (isAlpha)
-import Data.Foldable (traverse_)
+import Data.Foldable (for_)
 import Data.Maybe (catMaybes)
 import Data.Scientific (floatingOrInteger)
-import Data.Text
-import Data.Text.IO (hGetLine)
+import Data.Text (Text)
 import System.Environment (getArgs)
-import System.IO (hIsEOF, stdin)
 import Text.Read (readMaybe)
 
 main :: IO ()
@@ -70,33 +70,25 @@ parseArgs parsed args =
 
 run :: ParsedArgs -> IO ()
 run ParsedArgs {direction, maxEvents} = do
-  (errs, events) <- readEvents [] []
-  traverse_ (\err -> do putStr "Warning: "; putStrLn err) errs
   today' <- today
-  case minimum' (startDay <$> events) of
-    Nothing -> pure ()
-    Just firstDay ->
-      let dayRange =
-            case direction of
-              Future -> From firstDay Future
-              Past -> From today' Past
-          events' =
-            Prelude.take (fromIntegral maxEvents) $
-              occurrences
-                dayRange
-                (fmap eventToRecurrence events)
-       in traverse_ (\event -> putStrLn (show event)) events'
+  runConduit $
+    stdinC
+      .| decodeUtf8LenientC
+      .| linesUnboundedC
+      .| concatMapMC (eventOrWarning . parseLine)
+      .| mapC eventToRecurrence
+      .| occurrences today' direction
+      .| takeC (fromIntegral maxEvents)
+      .| mapM_C (putStrLn . show)
 
-readEvents :: [String] -> [Event] -> IO ([String], [Event])
-readEvents errs events = do
-  isEOF <- hIsEOF stdin
-  if isEOF
-    then pure (errs, events)
-    else do
-      line <- hGetLine stdin
-      case parseOnly (parserEvent <* endOfInput) line of
-        Left err -> readEvents (err : errs) events
-        Right event -> readEvents errs (event : events)
+eventOrWarning :: Either String Event -> IO (Maybe Event)
+eventOrWarning (Left warning) = do
+  putStrLn $ "Warning: " <> warning
+  pure Nothing
+eventOrWarning (Right event) = pure (Just event)
+
+parseLine :: Text -> Either String Event
+parseLine = parseOnly (parserEvent <* endOfInput)
 
 data RepeatFilter
   = DatePattern DatePattern
@@ -127,13 +119,6 @@ data Event = Event
   }
   deriving (Eq, Show)
 
-instance Ord Event where
-  compare a b = compare (startDay a) (startDay b)
-
-data DayRange
-  = From Day Direction
-  | Between Day Day
-
 data Recurrence a = Recurrence
   { onDay :: Day -> Bool,
     event :: a,
@@ -141,42 +126,40 @@ data Recurrence a = Recurrence
     maxDay :: Maybe Day
   }
 
-occurrences :: DayRange -> [Recurrence a] -> [(Day, a)]
-occurrences range recurrences =
-  gen [] days recurrences
-  where
-    (direction, days) =
-      case range of
-        From day' Future -> (Future, [day' ..])
-        From day' Past -> (Past, [day', pred day' ..])
-        Between start end -> (if start > end then Past else Future, [start .. end])
+occurrences :: (Monad m) => Day -> Direction -> ConduitT (Recurrence a) (Day, a) m ()
+occurrences firstDay direction = do
+  recurrences <- sinkList
+  iterateC (nextDay direction) firstDay
+    .| occurrencesHelper direction recurrences
 
-    gen ::
-      [Recurrence a] ->
-      [Day] ->
-      [Recurrence a] ->
-      [(Day, a)]
-    gen _ [] _ = []
-    gen [] _ [] = []
-    gen nextDayRecurrences (_ : nextDays) [] =
-      gen [] nextDays (Prelude.reverse nextDayRecurrences)
-    gen nextDayRecurrences days'@(day' : _) (recurrence : nextRecurrences)
-      | onDay recurrence day' =
-          -- Intentionally do not use tail-recursion here, so we can lazily
-          -- consume from the output of this function.
-          (day', event recurrence) : gen (recurrence : nextDayRecurrences) days' nextRecurrences
-    gen nextDayRecurrences days'@(day' : _) (recurrence : nextRecurrences)
-      | direction == Past,
-        Just minDay' <- minDay recurrence,
-        day' < minDay' =
-          gen nextDayRecurrences days' nextRecurrences
-    gen nextDayRecurrences days'@(day' : _) (recurrence : nextRecurrences)
-      | direction == Future,
-        Just maxDay' <- maxDay recurrence,
-        day' > maxDay' =
-          gen nextDayRecurrences days' nextRecurrences
-    gen nextDayRecurrences days' (recurrence : nextRecurrences) =
-      gen (recurrence : nextDayRecurrences) days' nextRecurrences
+occurrencesHelper :: (Monad m) => Direction -> [Recurrence a] -> ConduitT Day (Day, a) m ()
+occurrencesHelper direction recurrences = do
+  maybeDay <- headC
+  whenJust maybeDay $ \day' -> do
+    let liveRecurrences = removeDeadRecurrences direction day' recurrences
+    for_ liveRecurrences $ \recurrence ->
+      when
+        (onDay recurrence day')
+        (yield (day', event recurrence))
+    when
+      (not (null liveRecurrences))
+      (occurrencesHelper direction liveRecurrences)
+
+whenJust :: (Applicative m) => Maybe a -> (a -> m ()) -> m ()
+whenJust Nothing _ = pure ()
+whenJust (Just x) f = f x
+
+nextDay :: Direction -> Day -> Day
+nextDay Future = succ
+nextDay Past = pred
+
+removeDeadRecurrences :: Direction -> Day -> [Recurrence a] -> [Recurrence a]
+removeDeadRecurrences Future day' = filter (nothingOr (day' <=) . maxDay)
+removeDeadRecurrences Past day' = filter (nothingOr (day' >=) . minDay)
+
+nothingOr :: (a -> Bool) -> Maybe a -> Bool
+nothingOr _ Nothing = True
+nothingOr predicate (Just x) = predicate x
 
 data Direction = Future | Past deriving (Show, Eq, Ord)
 
@@ -194,7 +177,7 @@ eventToRecurrence event =
       Recurrence
         { onDay =
             \day' ->
-              Prelude.all
+              all
                 (matchesFilter day' (dayToDate day'))
                 rules,
           event = event,
@@ -203,21 +186,31 @@ eventToRecurrence event =
         }
 
 minimum' :: (Foldable f, Ord a) => f a -> Maybe a
-minimum' = Prelude.foldr keepLower Nothing
+minimum' = foldr keepLower Nothing
   where
     keepLower :: (Ord a) => a -> Maybe a -> Maybe a
     keepLower x Nothing = Just x
     keepLower x (Just y) = if x < y then Just x else Just y
 
 maximum' :: (Foldable f, Ord a) => f a -> Maybe a
-maximum' = Prelude.foldr keepUpper Nothing
+maximum' = foldr keepUpper Nothing
   where
     keepUpper :: (Ord a) => a -> Maybe a -> Maybe a
     keepUpper x Nothing = Just x
     keepUpper x (Just y) = if x > y then Just x else Just y
 
 filterUpperBound :: RepeatFilter -> Maybe Day
-filterUpperBound = undefined
+filterUpperBound (DatePattern pattern) = lastDayOfYear <$> year pattern
+filterUpperBound (NotDatePattern _) = Nothing
+filterUpperBound (WeekDay _) = Nothing
+filterUpperBound (EndDate endDate) = Just endDate
+
+lastDayOfYear :: Year -> Day
+lastDayOfYear year =
+  pred . ordinalDateToDay $ OrdinalDate (nextYear year) (DayOfYear 1)
+
+nextYear :: Year -> Year
+nextYear = Year . (+ 1) . getYear
 
 matchesFilter :: Day -> Date -> RepeatFilter -> Bool
 matchesFilter _ date (DatePattern pattern) = matchesPattern date pattern
