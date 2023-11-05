@@ -22,6 +22,19 @@ Patterns:
   <=YYYY-MM-DD   Matches all days before a particular date.
 
   mon .. sun     Matches a particular day of the week
+
+Stdin:
+  Stdin expects one event per line, with the following format:
+    2023-11-01 [wed <=2023-12-20] 19:30 +2:00 (CET) Dancing class
+
+  We see, in order:
+    2023-11-01           First occurence of an event (required)
+    [wed <=2023-12-20]   Extra event days, using CLI patterns
+    19:30                Event starting time in 24 hour clock
+    +2:00                Event duration
+    (CET)                Timezone of the starting time
+    Dancing class        Event description
+  All elements but the first occurence date are optional.
 >= 0
 
 

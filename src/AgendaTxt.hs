@@ -25,6 +25,8 @@ main = do
       putStrLn "Parse plain text agenda.txt files."
       putStrLn ""
       showHelp stdout
+      putStrLn ""
+      showStdinHelp stdout
     ParseError err -> do
       hPutStrLn stderr err
       hPutStrLn stderr ""
@@ -55,6 +57,21 @@ showHelp h = do
   hPutStrLn h "  <=YYYY-MM-DD   Matches all days before a particular date."
   hPutStrLn h ""
   hPutStrLn h "  mon .. sun     Matches a particular day of the week"
+
+showStdinHelp :: Handle -> IO ()
+showStdinHelp h = do
+  hPutStrLn h "Stdin:"
+  hPutStrLn h "  Stdin expects one event per line, with the following format:"
+  hPutStrLn h "    2023-11-01 [wed <=2023-12-20] 19:30 +2:00 (CET) Dancing class"
+  hPutStrLn h ""
+  hPutStrLn h "  We see, in order:"
+  hPutStrLn h "    2023-11-01           First occurence of an event (required)"
+  hPutStrLn h "    [wed <=2023-12-20]   Extra event days, using CLI patterns"
+  hPutStrLn h "    19:30                Event starting time in 24 hour clock"
+  hPutStrLn h "    +2:00                Event duration"
+  hPutStrLn h "    (CET)                Timezone of the starting time"
+  hPutStrLn h "    Dancing class        Event description"
+  hPutStrLn h "  All elements but the first occurence date are optional."
 
 data ParsedArgsResult
   = ShowHelp
