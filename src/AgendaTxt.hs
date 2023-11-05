@@ -8,7 +8,7 @@ import Data.Char (isAlpha)
 import Data.Foldable (for_)
 import Data.Maybe (catMaybes)
 import Data.Scientific (floatingOrInteger)
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import Data.Text.Lazy (toStrict)
 import Data.Text.Lazy.Builder (toLazyText)
 import System.Environment (getArgs)
@@ -17,14 +17,14 @@ import System.Timeout (timeout)
 
 main :: IO ()
 main = do
-  parsedArgs <- parseArgs defaultParsedArgs <$> getArgs
+  parsedArgs <- parseArgs <$> defaultParsedArgs <*> getArgs
   case parsedArgs of
     ShowHelp -> do
       putStrLn "Parse plain text agenda.txt files."
       putStrLn ""
       showHelp
-    UnknownArg arg -> do
-      putStrLn ("Unknown arg: " <> arg)
+    ParseError err -> do
+      putStrLn err
       putStrLn ""
       showHelp
       System.Exit.exitFailure
@@ -36,23 +36,23 @@ showHelp = do
   putStrLn "Usage: cat agenda.txt | agenda-txt {flags} [patterns]"
   putStrLn ""
   putStrLn "Flags"
-  putStrLn "  --help      Show this help text"
-  putStrLn "  --past      Show past instead of future events"
+  putStrLn "  --help              Show this help text"
+  putStrLn "  --past              Show past instead of future events"
+  putStrLn "  --from YYYY-MM-DD   Choose a different starting date than today"
 
 data ParsedArgsResult
   = ShowHelp
-  | UnknownArg String
+  | ParseError String
   | Parsed ParsedArgs
 
 data ParsedArgs = ParsedArgs
-  { direction :: Direction
+  { from :: Day,
+    direction :: Direction
   }
 
-defaultParsedArgs :: ParsedArgs
+defaultParsedArgs :: IO ParsedArgs
 defaultParsedArgs =
-  ParsedArgs
-    { direction = Future
-    }
+  ParsedArgs <$> today <*> pure Future
 
 parseArgs :: ParsedArgs -> [String] -> ParsedArgsResult
 parseArgs parsed args =
@@ -62,12 +62,15 @@ parseArgs parsed args =
       ShowHelp
     "--past" : rest ->
       parseArgs parsed {direction = Past} rest
+    "--from" : dateString : rest ->
+      case parseOnly (parser_Ymd (Just '-') <* endOfInput) (pack dateString) of
+        Right date -> parseArgs parsed {from = dateToDay date} rest
+        Left _ -> ParseError ("Can't parse --from date: " <> dateString)
     arg : _ ->
-      UnknownArg arg
+      ParseError ("Unknown argument: " <> arg)
 
 run :: ParsedArgs -> IO ()
-run ParsedArgs {direction} = do
-  today' <- today
+run ParsedArgs {direction, from} = do
   res <-
     timeout 100_000 . runConduit $
       stdinC
@@ -75,7 +78,7 @@ run ParsedArgs {direction} = do
         .| linesUnboundedC
         .| concatMapMC (eventOrWarning . parseLine)
         .| mapC eventToRecurrence
-        .| occurrences today' direction
+        .| occurrences from direction
         .| printOccurrences
         .| encodeUtf8C
         .| stdoutC
