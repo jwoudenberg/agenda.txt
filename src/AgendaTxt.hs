@@ -13,6 +13,7 @@ import Data.Text.Lazy (toStrict)
 import Data.Text.Lazy.Builder (toLazyText)
 import System.Environment (getArgs)
 import qualified System.Exit
+import System.IO (Handle, hPutStrLn, stderr, stdout)
 import Text.Read (readMaybe)
 import qualified Torsor
 
@@ -23,37 +24,37 @@ main = do
     ShowHelp -> do
       putStrLn "Parse plain text agenda.txt files."
       putStrLn ""
-      showHelp
+      showHelp stdout
     ParseError err -> do
-      putStrLn err
-      putStrLn ""
-      showHelp
+      hPutStrLn stderr err
+      hPutStrLn stderr ""
+      showHelp stderr
       System.Exit.exitFailure
     Parsed result ->
       run result
 
-showHelp :: IO ()
-showHelp = do
-  putStrLn "Usage: cat agenda.txt | agenda-txt {flags} [patterns]"
-  putStrLn ""
-  putStrLn "Flags:"
-  putStrLn "  --help              Show this help text"
-  putStrLn "  --past              Show past instead of future events"
-  putStrLn "  --from YYYY-MM-DD   Choose a different starting date than today"
-  putStrLn ""
-  putStrLn "Patterns:"
-  putStrLn "  YYYY-MM-DD     Matches a particular date. Year, month, or day"
-  putStrLn "                 can be left out, for instance:"
-  putStrLn "                 1989-1-11   Matches only January 11th 1989"
-  putStrLn "                 --1-11      Matches January 11th every year"
-  putStrLn "                 --1-        Matches every day in January"
-  putStrLn ""
-  putStrLn "  !YYYY-MM-DD    Exclude a particular date. Year, month, or day"
-  putStrLn "                 can be left out as in the pattern above."
-  putStrLn ""
-  putStrLn "  <=YYYY-MM-DD   Matches all days before a particular date."
-  putStrLn ""
-  putStrLn "  mon .. sun     Matches a particular day of the week"
+showHelp :: Handle -> IO ()
+showHelp h = do
+  hPutStrLn h "Usage: cat agenda.txt | agenda-txt {flags} [patterns]"
+  hPutStrLn h ""
+  hPutStrLn h "Flags:"
+  hPutStrLn h "  --help              Show this help text"
+  hPutStrLn h "  --past              Show past instead of future events"
+  hPutStrLn h "  --from YYYY-MM-DD   Choose a different starting date than today"
+  hPutStrLn h ""
+  hPutStrLn h "Patterns:"
+  hPutStrLn h "  YYYY-MM-DD     Matches a particular date. Year, month, or day"
+  hPutStrLn h "                 can be left out, for instance:"
+  hPutStrLn h "                 1989-1-11   Matches only January 11th 1989"
+  hPutStrLn h "                 --1-11      Matches January 11th every year"
+  hPutStrLn h "                 --1-        Matches every day in January"
+  hPutStrLn h ""
+  hPutStrLn h "  !YYYY-MM-DD    Exclude a particular date. Year, month, or day"
+  hPutStrLn h "                 can be left out as in the pattern above."
+  hPutStrLn h ""
+  hPutStrLn h "  <=YYYY-MM-DD   Matches all days before a particular date."
+  hPutStrLn h ""
+  hPutStrLn h "  mon .. sun     Matches a particular day of the week"
 
 data ParsedArgsResult
   = ShowHelp
@@ -130,7 +131,7 @@ run ParsedArgs {direction, from, dateFilters, maxResults, maxIntervalDays} = run
 
 eventOrWarning :: Either String Event -> IO (Maybe Event)
 eventOrWarning (Left warning) = do
-  putStrLn $ "Warning: " <> warning
+  hPutStrLn stderr $ "Warning: " <> warning
   pure Nothing
 eventOrWarning (Right event) = pure (Just event)
 

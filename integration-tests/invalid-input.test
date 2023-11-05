@@ -1,0 +1,10 @@
+<
+2023-11-08 Concert
+Not a valid agenda.txt line
+2023-11-02 Dancing
+$ ./run.sh --from 2023-11-05
+>
+2023-11-08 Concert
+>2
+Warning: Failed reading: input does not start with a digit
+>= 0

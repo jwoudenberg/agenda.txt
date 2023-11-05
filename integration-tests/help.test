@@ -27,7 +27,7 @@ Patterns:
 
 
 $ ./run.sh --duck
->
+>2
 Unknown argument: --duck
 
 Usage: cat agenda.txt | agenda-txt {flags} [patterns]
