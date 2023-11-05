@@ -2,9 +2,9 @@
 2023-11-06 [--] Wake up!
 $ ./run.sh --from 2023-11-08 --max-results 3
 >
-2023-11-08 Wake up!
-2023-11-09 Wake up!
-2023-11-10 Wake up!
+Wed 8 Nov 2023: Wake up!
+Thu 9 Nov 2023: Wake up!
+Fri 10 Nov 2023: Wake up!
 >= 0
 
 
@@ -13,6 +13,6 @@ $ ./run.sh --from 2023-11-08 --max-results 3
 2023-11-06 [--1] Monthly review
 $ ./run.sh --from 2023-11-08 --max-interval-days 60
 >
-2023-12-01 Monthly review
-2024-01-01 Monthly review
+Fri 1 Dec 2023: Monthly review
+Mon 1 Jan 2024: Monthly review
 >= 0

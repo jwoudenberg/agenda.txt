@@ -11,6 +11,7 @@ import Data.Scientific (floatingOrInteger)
 import Data.Text (Text, pack)
 import Data.Text.Lazy (toStrict)
 import Data.Text.Lazy.Builder (toLazyText)
+import qualified Data.Text.Lazy.Builder.Int as Builder.Int
 import System.Environment (getArgs)
 import qualified System.Exit
 import System.IO (Handle, hPutStrLn, stderr, stdout)
@@ -159,11 +160,24 @@ printOccurrences :: (Monad m) => ConduitT (Day, Event) Text m ()
 printOccurrences = do
   occurrence <- headC
   whenJust occurrence $ \(day', event) -> do
-    yield . toStrict . toLazyText $ builder_Ymd (Just '-') (dayToDate day')
+    let date = dayToDate day'
+    yield $ caseDayOfWeek shortDayOfWeek (dateToDayOfWeek date)
     yield " "
+    yield $ toStrict . toLazyText $ Builder.Int.decimal (getDayOfMonth (dateDay date))
+    yield " "
+    yield $ caseMonth shortMonth (dateMonth date)
+    yield " "
+    yield $ toStrict . toLazyText $ Builder.Int.decimal (getYear (dateYear date))
+    yield ": "
     yield $ description event
     yield "\n"
     printOccurrences
+
+shortDayOfWeek :: DayOfWeekMatch Text
+shortDayOfWeek = buildDayOfWeekMatch "Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"
+
+shortMonth :: MonthMatch Text
+shortMonth = buildMonthMatch "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Set" "Oct" "Nov" "Dec"
 
 data DateFilter
   = DatePattern DatePattern
