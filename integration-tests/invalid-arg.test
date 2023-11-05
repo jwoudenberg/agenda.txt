@@ -1,0 +1,10 @@
+$ cabal run agenda-txt -- --duck
+>
+Unknown arg: --duck
+
+Usage: cat agenda.txt | agenda-txt {flags} [patterns]
+
+Flags
+  --help      Show this help text
+  --past      Show past instead of future events
+>= 1

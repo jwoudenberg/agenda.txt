@@ -12,6 +12,7 @@ import Data.Text (Text)
 import Data.Text.Lazy (toStrict)
 import Data.Text.Lazy.Builder (toLazyText)
 import System.Environment (getArgs)
+import qualified System.Exit
 import System.Timeout (timeout)
 
 main :: IO ()
@@ -26,6 +27,7 @@ main = do
       putStrLn ("Unknown arg: " <> arg)
       putStrLn ""
       showHelp
+      System.Exit.exitFailure
     Parsed result ->
       run result
 

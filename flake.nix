@@ -17,6 +17,7 @@
             pkgs.cabal-install
             pkgs.haskellPackages.ghcid
             pkgs.haskellPackages.hpack
+            pkgs.haskellPackages.shelltestrunner
             pkgs.ormolu
           ];
         };
