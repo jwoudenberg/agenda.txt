@@ -7,3 +7,15 @@ $ ./run.sh --from 2023-11-05
 2023-11-05 Boardgames
 2023-11-08 Concert
 >= 0
+
+
+
+<
+2023-11-08 Concert
+2023-11-05 Boardgames
+2023-11-02 Dancing
+$ ./run.sh --past --from 2023-11-05
+>
+2023-11-05 Boardgames
+2023-11-02 Dancing
+>= 0
