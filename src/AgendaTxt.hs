@@ -13,7 +13,8 @@ import Data.Text.Lazy (toStrict)
 import Data.Text.Lazy.Builder (toLazyText)
 import System.Environment (getArgs)
 import qualified System.Exit
-import System.Timeout (timeout)
+import Text.Read (readMaybe)
+import qualified Torsor
 
 main :: IO ()
 main = do
@@ -47,12 +48,21 @@ data ParsedArgsResult
 
 data ParsedArgs = ParsedArgs
   { from :: Day,
-    direction :: Direction
+    direction :: Direction,
+    maxResults :: Int,
+    maxIntervalDays :: Int
   }
 
 defaultParsedArgs :: IO ParsedArgs
-defaultParsedArgs =
-  ParsedArgs <$> today <*> pure Future
+defaultParsedArgs = do
+  from <- today
+  pure
+    ParsedArgs
+      { from = from,
+        direction = Future,
+        maxResults = 10_000,
+        maxIntervalDays = 365_00 -- One century
+      }
 
 parseArgs :: ParsedArgs -> [String] -> ParsedArgsResult
 parseArgs parsed args =
@@ -66,25 +76,35 @@ parseArgs parsed args =
       case parseOnly (parser_Ymd (Just '-') <* endOfInput) (pack dateString) of
         Right date -> parseArgs parsed {from = dateToDay date} rest
         Left _ -> ParseError ("Can't parse --from date: " <> dateString)
+    -- These options are intentionally not documented in the API. I have them
+    -- for testing purposes only. Should they be used for real, I'd like to
+    -- reconsider my design rather than making these 'official'.
+    "--max-results" : amountString : rest ->
+      case readMaybe amountString of
+        Just amount -> parseArgs parsed {maxResults = amount} rest
+        Nothing -> ParseError ("Can't parse amount in --max-results parameter: " <> amountString)
+    "--max-interval-days" : amountString : rest ->
+      case readMaybe amountString of
+        Just amount -> parseArgs parsed {maxIntervalDays = amount} rest
+        Nothing -> ParseError ("Can't parse amount in --max-interval-days parameter: " <> amountString)
     arg : _ ->
       ParseError ("Unknown argument: " <> arg)
 
 run :: ParsedArgs -> IO ()
-run ParsedArgs {direction, from} = do
-  res <-
-    timeout 100_000 . runConduit $
-      stdinC
-        .| decodeUtf8LenientC
-        .| linesUnboundedC
-        .| concatMapMC (eventOrWarning . parseLine)
-        .| mapC eventToRecurrence
-        .| occurrences from direction
-        .| printOccurrences
-        .| encodeUtf8C
-        .| stdoutC
-  case res of
-    Just () -> pure ()
-    Nothing -> putStrLn "   ... more ..."
+run ParsedArgs {direction, from, maxResults, maxIntervalDays} = runConduit $ do
+  let maxDay = Torsor.add maxIntervalDays from
+  let minDay = Torsor.add (-maxIntervalDays) from
+  stdinC
+    .| decodeUtf8LenientC
+    .| linesUnboundedC
+    .| concatMapMC (eventOrWarning . parseLine)
+    .| mapC eventToRecurrence
+    .| occurrences from direction
+    .| takeC maxResults
+    .| takeWhileC (\(day', _) -> day' >= minDay && day' <= maxDay)
+    .| printOccurrences
+    .| encodeUtf8C
+    .| stdoutC
 
 eventOrWarning :: Either String Event -> IO (Maybe Event)
 eventOrWarning (Left warning) = do
