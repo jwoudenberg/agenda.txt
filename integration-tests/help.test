@@ -1,4 +1,4 @@
-$ cabal run agenda-txt -- --help
+$ ./run.sh --help
 >
 Parse plain text agenda.txt files.
 
@@ -26,7 +26,7 @@ Patterns:
 
 
 
-$ cabal run agenda-txt -- --duck
+$ ./run.sh --duck
 >
 Unknown argument: --duck
 

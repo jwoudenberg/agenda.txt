@@ -1,6 +1,6 @@
 <
 2023-11-06 [--] Wake up!
-$ cabal run agenda-txt -- --from 2023-11-08 --max-results 3
+$ ./run.sh --from 2023-11-08 --max-results 3
 >
 2023-11-08 Wake up!
 2023-11-09 Wake up!
@@ -11,7 +11,7 @@ $ cabal run agenda-txt -- --from 2023-11-08 --max-results 3
 
 <
 2023-11-06 [--1] Monthly review
-$ cabal run agenda-txt -- --from 2023-11-08 --max-interval-days 60
+$ ./run.sh --from 2023-11-08 --max-interval-days 60
 >
 2023-12-01 Monthly review
 2024-01-01 Monthly review

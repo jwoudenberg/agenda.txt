@@ -1,6 +1,6 @@
 <
 2023-11-06 [mon] Lessons
-$ cabal run agenda-txt -- --from 2023-11-08 2023-11-
+$ ./run.sh --from 2023-11-08 2023-11-
 >
 2023-11-13 Lessons
 2023-11-20 Lessons
@@ -10,7 +10,7 @@ $ cabal run agenda-txt -- --from 2023-11-08 2023-11-
 
 <
 2023-11-06 [mon] Lessons
-$ cabal run agenda-txt -- --past --from 2023-12-01
+$ ./run.sh --past --from 2023-12-01
 >
 2023-11-27 Lessons
 2023-11-20 Lessons
