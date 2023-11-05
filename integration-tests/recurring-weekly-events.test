@@ -1,6 +1,6 @@
 <
-2023-11-06 [mon 2023-11-] Lessons
-$ cabal run agenda-txt -- --from 2023-11-08
+2023-11-06 [mon] Lessons
+$ cabal run agenda-txt -- --from 2023-11-08 2023-11-
 >
 2023-11-13 Lessons
 2023-11-20 Lessons

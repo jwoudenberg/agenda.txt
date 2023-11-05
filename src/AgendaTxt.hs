@@ -36,10 +36,24 @@ showHelp :: IO ()
 showHelp = do
   putStrLn "Usage: cat agenda.txt | agenda-txt {flags} [patterns]"
   putStrLn ""
-  putStrLn "Flags"
+  putStrLn "Flags:"
   putStrLn "  --help              Show this help text"
   putStrLn "  --past              Show past instead of future events"
   putStrLn "  --from YYYY-MM-DD   Choose a different starting date than today"
+  putStrLn ""
+  putStrLn "Patterns:"
+  putStrLn "  YYYY-MM-DD     Matches a particular date. Year, month, or day"
+  putStrLn "                 can be left out, for instance:"
+  putStrLn "                 1989-1-11   Matches only January 11th 1989"
+  putStrLn "                 --1-11      Matches January 11th every year"
+  putStrLn "                 --1-        Matches every day in January"
+  putStrLn ""
+  putStrLn "  !YYYY-MM-DD    Exclude a particular date. Year, month, or day"
+  putStrLn "                 can be left out as in the pattern above."
+  putStrLn ""
+  putStrLn "  <=YYYY-MM-DD   Matches all days before a particular date."
+  putStrLn ""
+  putStrLn "  mon .. sun     Matches a particular day of the week"
 
 data ParsedArgsResult
   = ShowHelp
@@ -49,6 +63,7 @@ data ParsedArgsResult
 data ParsedArgs = ParsedArgs
   { from :: Day,
     direction :: Direction,
+    dateFilters :: [DateFilter],
     maxResults :: Int,
     maxIntervalDays :: Int
   }
@@ -60,6 +75,7 @@ defaultParsedArgs = do
     ParsedArgs
       { from = from,
         direction = Future,
+        dateFilters = [],
         maxResults = 10_000,
         maxIntervalDays = 365_00 -- One century
       }
@@ -87,19 +103,25 @@ parseArgs parsed args =
       case readMaybe amountString of
         Just amount -> parseArgs parsed {maxIntervalDays = amount} rest
         Nothing -> ParseError ("Can't parse amount in --max-interval-days parameter: " <> amountString)
-    arg : _ ->
-      ParseError ("Unknown argument: " <> arg)
+    arg : rest ->
+      case parseOnly (parserRepeatStep <* endOfInput) (pack arg) of
+        Right dateFilter -> parseArgs parsed {dateFilters = dateFilter : (dateFilters parsed)} rest
+        Left _ -> ParseError ("Unknown argument: " <> arg)
 
 run :: ParsedArgs -> IO ()
-run ParsedArgs {direction, from, maxResults, maxIntervalDays} = runConduit $ do
+run ParsedArgs {direction, from, dateFilters, maxResults, maxIntervalDays} = runConduit $ do
   let maxDay = Torsor.add maxIntervalDays from
   let minDay = Torsor.add (-maxIntervalDays) from
-  stdinC
-    .| decodeUtf8LenientC
-    .| linesUnboundedC
-    .| concatMapMC (eventOrWarning . parseLine)
-    .| mapC eventToRecurrence
-    .| occurrences from direction
+  recurrences <-
+    stdinC
+      .| decodeUtf8LenientC
+      .| linesUnboundedC
+      .| concatMapMC (eventOrWarning . parseLine)
+      .| mapC eventToRecurrence
+      .| sinkList
+
+  days from direction dateFilters
+    .| occurrences direction recurrences
     .| takeC maxResults
     .| takeWhileC (\(day', _) -> day' >= minDay && day' <= maxDay)
     .| printOccurrences
@@ -125,7 +147,7 @@ printOccurrences = do
     yield "\n"
     printOccurrences
 
-data RepeatFilter
+data DateFilter
   = DatePattern DatePattern
   | NotDatePattern DatePattern
   | WeekDay DayOfWeek
@@ -148,7 +170,7 @@ data EventTime = EventTime
 
 data Event = Event
   { startDay :: Day,
-    repeatRule :: [RepeatFilter],
+    repeatRule :: [DateFilter],
     time :: Maybe EventTime,
     description :: Text
   }
@@ -161,14 +183,29 @@ data Recurrence a = Recurrence
     maxDay :: Maybe Day
   }
 
-occurrences :: (Monad m) => Day -> Direction -> ConduitT (Recurrence a) (Day, a) m ()
-occurrences firstDay direction = do
-  recurrences <- sinkList
-  iterateC (nextDay direction) firstDay
-    .| occurrencesHelper direction recurrences
+days :: (Monad m) => Day -> Direction -> [DateFilter] -> ConduitT i Day m ()
+days from direction dateFilters =
+  let daysUnbounded =
+        iterateC (nextDay direction) from
+      boundFilter =
+        case direction of
+          Future ->
+            (\bound -> takeWhileC (<= bound)) <$> filtersUpperBound dateFilters
+          Past ->
+            (\bound -> takeWhileC (>= bound)) <$> filtersLowerBound dateFilters
+   in case boundFilter of
+        Nothing ->
+          daysUnbounded
+            .| filterC (matchesFilters dateFilters)
+        Just boundFilter' ->
+          daysUnbounded
+            .| boundFilter'
+            .| filterC (matchesFilters dateFilters)
 
-occurrencesHelper :: (Monad m) => Direction -> [Recurrence a] -> ConduitT Day (Day, a) m ()
-occurrencesHelper direction recurrences = do
+-- The conduit produced by this function assumes input days are monotonically
+-- increasing or decreasing in the direction of the input argument.
+occurrences :: (Monad m) => Direction -> [Recurrence a] -> ConduitT Day (Day, a) m ()
+occurrences direction recurrences = do
   maybeDay <- headC
   whenJust maybeDay $ \day' -> do
     let liveRecurrences = removeDeadRecurrences direction day' recurrences
@@ -178,7 +215,7 @@ occurrencesHelper direction recurrences = do
         (yield (day', event recurrence))
     when
       (not (null liveRecurrences))
-      (occurrencesHelper direction liveRecurrences)
+      (occurrences direction liveRecurrences)
 
 whenJust :: (Applicative m) => Maybe a -> (a -> m ()) -> m ()
 whenJust Nothing _ = pure ()
@@ -208,16 +245,12 @@ eventToRecurrence event =
           minDay = Just (startDay event),
           maxDay = Just (startDay event)
         }
-    rules ->
+    filters ->
       Recurrence
-        { onDay =
-            \day' ->
-              all
-                (matchesFilter day' (dayToDate day'))
-                rules,
+        { onDay = matchesFilters filters,
           event = event,
           minDay = Just (startDay event),
-          maxDay = maximum' $ catMaybes $ fmap filterUpperBound $ rules
+          maxDay = filtersUpperBound filters
         }
 
 minimum' :: (Foldable f, Ord a) => f a -> Maybe a
@@ -234,7 +267,10 @@ maximum' = foldr keepUpper Nothing
     keepUpper x Nothing = Just x
     keepUpper x (Just y) = if x > y then Just x else Just y
 
-filterUpperBound :: RepeatFilter -> Maybe Day
+filtersUpperBound :: [DateFilter] -> Maybe Day
+filtersUpperBound = minimum' . catMaybes . fmap filterUpperBound
+
+filterUpperBound :: DateFilter -> Maybe Day
 filterUpperBound (DatePattern pattern) = lastDayOfYear <$> year pattern
 filterUpperBound (NotDatePattern _) = Nothing
 filterUpperBound (WeekDay _) = Nothing
@@ -244,10 +280,27 @@ lastDayOfYear :: Year -> Day
 lastDayOfYear year =
   pred . ordinalDateToDay $ OrdinalDate (nextYear year) (DayOfYear 1)
 
+filtersLowerBound :: [DateFilter] -> Maybe Day
+filtersLowerBound = maximum' . catMaybes . fmap filterUpperBound
+
+filterLowerBound :: DateFilter -> Maybe Day
+filterLowerBound (DatePattern pattern) = firstDayOfYear <$> year pattern
+filterLowerBound (NotDatePattern _) = Nothing
+filterLowerBound (WeekDay _) = Nothing
+filterLowerBound (EndDate _) = Nothing
+
+firstDayOfYear :: Year -> Day
+firstDayOfYear year =
+  ordinalDateToDay $ OrdinalDate year (DayOfYear 1)
+
 nextYear :: Year -> Year
 nextYear = Year . (+ 1) . getYear
 
-matchesFilter :: Day -> Date -> RepeatFilter -> Bool
+matchesFilters :: [DateFilter] -> Day -> Bool
+matchesFilters dateFilters day' =
+  all (matchesFilter day' (dayToDate day')) dateFilters
+
+matchesFilter :: Day -> Date -> DateFilter -> Bool
 matchesFilter _ date (DatePattern pattern) = matchesPattern date pattern
 matchesFilter _ date (NotDatePattern pattern) = not (matchesPattern date pattern)
 matchesFilter _ date (WeekDay weekDay) = weekDay == dateToDayOfWeek date
@@ -273,7 +326,7 @@ parserEvent = do
   description <- Data.Attoparsec.Text.takeWhile (/= '\n')
   pure $ Event startDate repeatRule time description
 
-parserRepeatRule :: Parser [RepeatFilter]
+parserRepeatRule :: Parser [DateFilter]
 parserRepeatRule =
   char '['
     <* skipSpace
@@ -281,7 +334,7 @@ parserRepeatRule =
     <* skipSpace
     <* char ']'
 
-parserRepeatStep :: Parser RepeatFilter
+parserRepeatStep :: Parser DateFilter
 parserRepeatStep =
   choice
     [ NotDatePattern <$> (char '!' *> parserDatePattern),

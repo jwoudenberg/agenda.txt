@@ -4,8 +4,50 @@ Parse plain text agenda.txt files.
 
 Usage: cat agenda.txt | agenda-txt {flags} [patterns]
 
-Flags
+Flags:
   --help              Show this help text
   --past              Show past instead of future events
   --from YYYY-MM-DD   Choose a different starting date than today
+
+Patterns:
+  YYYY-MM-DD     Matches a particular date. Year, month, or day
+                 can be left out, for instance:
+                 1989-1-11   Matches only January 11th 1989
+                 --1-11      Matches January 11th every year
+                 --1-        Matches every day in January
+
+  !YYYY-MM-DD    Exclude a particular date. Year, month, or day
+                 can be left out as in the pattern above.
+
+  <=YYYY-MM-DD   Matches all days before a particular date.
+
+  mon .. sun     Matches a particular day of the week
 >= 0
+
+
+
+$ cabal run agenda-txt -- --duck
+>
+Unknown argument: --duck
+
+Usage: cat agenda.txt | agenda-txt {flags} [patterns]
+
+Flags:
+  --help              Show this help text
+  --past              Show past instead of future events
+  --from YYYY-MM-DD   Choose a different starting date than today
+
+Patterns:
+  YYYY-MM-DD     Matches a particular date. Year, month, or day
+                 can be left out, for instance:
+                 1989-1-11   Matches only January 11th 1989
+                 --1-11      Matches January 11th every year
+                 --1-        Matches every day in January
+
+  !YYYY-MM-DD    Exclude a particular date. Year, month, or day
+                 can be left out as in the pattern above.
+
+  <=YYYY-MM-DD   Matches all days before a particular date.
+
+  mon .. sun     Matches a particular day of the week
+>= 1

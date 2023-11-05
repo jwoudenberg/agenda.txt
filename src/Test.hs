@@ -45,9 +45,8 @@ futureDateRangesTest = property $ do
   let allOnOrAfterDays = Prelude.filter (>= start) $ foldMap (Set.toList . eventDays) events
   let results =
         runConduitPure $
-          yieldMany events
-            .| mapC testEventToRecurrence
-            .| occurrences start Future
+          days start Future []
+            .| occurrences Future (testEventToRecurrence <$> events)
             .| mapC fst
             .| sinkList
   results === sort allOnOrAfterDays
@@ -65,9 +64,8 @@ pastDateRangesTest = property $ do
   let allOnOrBeforeDays = Prelude.filter (<= start) $ foldMap (Set.toList . eventDays) events
   let results =
         runConduitPure $
-          yieldMany events
-            .| mapC testEventToRecurrence
-            .| occurrences start Past
+          days start Past []
+            .| occurrences Past (testEventToRecurrence <$> events)
             .| mapC fst
             .| sinkList
   results === reverse (sort allOnOrBeforeDays)
@@ -77,8 +75,8 @@ futureInfiniteEventTest = property $ do
   start <- forAll genDay
   let results =
         runConduitPure $
-          yield (alwaysRecurrence ())
-            .| occurrences start Future
+          days start Future []
+            .| occurrences Future [alwaysRecurrence ()]
             .| takeC 10
             .| mapC fst
             .| sinkList
@@ -89,8 +87,8 @@ pastInfiniteEventTest = property $ do
   start <- forAll genDay
   let results =
         runConduitPure $
-          yield (alwaysRecurrence ())
-            .| occurrences start Past
+          days start Past []
+            .| occurrences Past [alwaysRecurrence ()]
             .| takeC 10
             .| mapC fst
             .| sinkList
@@ -156,7 +154,7 @@ builderDay :: Day -> Gen Builder
 builderDay day =
   pure $ builder_Ymd (Just '-') (dayToDate day)
 
-builderRepeatRule :: [RepeatFilter] -> Gen Builder
+builderRepeatRule :: [DateFilter] -> Gen Builder
 builderRepeatRule [] = element ["", "[]", "[ ]"]
 builderRepeatRule repeatFilters =
   pure "["
@@ -165,7 +163,7 @@ builderRepeatRule repeatFilters =
     <> builderSpacing
     <> pure "]"
 
-builderRepeatFilter :: RepeatFilter -> Gen Builder
+builderRepeatFilter :: DateFilter -> Gen Builder
 builderRepeatFilter repeatFilter =
   case repeatFilter of
     DatePattern pattern -> builderDatePattern pattern
@@ -222,7 +220,7 @@ genEvent =
 genDay :: Gen Day
 genDay = Day <$> int (linear 0 10000)
 
-genRepeatFilter :: Gen RepeatFilter
+genRepeatFilter :: Gen DateFilter
 genRepeatFilter =
   choice
     [ DatePattern <$> genDatePattern,
