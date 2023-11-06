@@ -160,17 +160,42 @@ printOccurrences = do
   occurrence <- headC
   whenJust occurrence $ \(day', event) -> do
     let date = dayToDate day'
+    yield "["
     yield $ caseDayOfWeek shortDayOfWeek (dateToDayOfWeek date)
     yield " "
-    yield $ toStrict . toLazyText $ Builder.Int.decimal (getDayOfMonth (dateDay date))
+    yield . intToText . getDayOfMonth $ dateDay date
     yield " "
     yield $ caseMonth shortMonth (dateMonth date)
     yield " "
-    yield $ toStrict . toLazyText $ Builder.Int.decimal (getYear (dateYear date))
-    yield ": "
+    yield . intToText . getYear $ dateYear date
+    whenJust (time event) $ \time' -> do
+      yield " "
+      yield . intToText . timeOfDayHour $ startTime time'
+      yield ":"
+      yield . intToText2 . timeOfDayMinute $ startTime time'
+      whenJust (durationMinutes time') $ \durationMinutes' -> do
+        yield "+"
+        yield . intToText . fromIntegral $ durationMinutes' `div` 60
+        yield ":"
+        yield . intToText2 . fromIntegral $ durationMinutes' `mod` 60
+      whenJust (timezone time') $ \timezone' -> do
+        yield " ("
+        yield timezone'
+        yield ")"
+    yield "] "
     yield $ description event
     yield "\n"
     printOccurrences
+
+intToText :: Int -> Text
+intToText = toStrict . toLazyText . Builder.Int.decimal
+
+intToText2 :: Int -> Text
+intToText2 n =
+  toStrict . toLazyText $
+    if n < 10
+      then "0" <> Builder.Int.decimal n
+      else Builder.Int.decimal n
 
 shortDayOfWeek :: DayOfWeekMatch Text
 shortDayOfWeek = buildDayOfWeekMatch "Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"
