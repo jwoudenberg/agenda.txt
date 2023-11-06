@@ -43,6 +43,7 @@ showHelp h = do
   hPutStrLn h "Flags:"
   hPutStrLn h "  --help              Show this help text"
   hPutStrLn h "  --past              Show past instead of future events"
+  hPutStrLn h "  --html              Output events in HTML format"
   hPutStrLn h ""
   hPutStrLn h "Patterns:"
   hPutStrLn h "  YYYY-MM-DD     Matches a particular date. Year, month, or day"
@@ -81,10 +82,13 @@ data ParsedArgsResult
 data ParsedArgs = ParsedArgs
   { from :: Day,
     direction :: Direction,
+    output :: Output,
     dateFilters :: [DateFilter],
     maxResults :: Int,
     maxIntervalDays :: Int
   }
+
+data Output = Console | Html
 
 defaultParsedArgs :: IO ParsedArgs
 defaultParsedArgs = do
@@ -93,6 +97,7 @@ defaultParsedArgs = do
     ParsedArgs
       { from = from,
         direction = Future,
+        output = Console,
         dateFilters = [],
         maxResults = 10_000,
         maxIntervalDays = 365_00 -- One century
@@ -106,6 +111,8 @@ parseArgs parsed args =
       ShowHelp
     "--past" : rest ->
       parseArgs parsed {direction = Past} rest
+    "--html" : rest ->
+      parseArgs parsed {output = Html} rest
     -- These options are intentionally not documented in the API. I have them
     -- for testing purposes only. Should they be used for real, I'd like to
     -- reconsider my design rather than making these 'official'.
@@ -127,7 +134,7 @@ parseArgs parsed args =
         Left _ -> ParseError ("Unknown argument: " <> arg)
 
 run :: ParsedArgs -> IO ()
-run ParsedArgs {direction, from, dateFilters, maxResults, maxIntervalDays} = runConduit $ do
+run ParsedArgs {direction, output, from, dateFilters, maxResults, maxIntervalDays} = runConduit $ do
   let maxDay = Torsor.add maxIntervalDays from
   let minDay = Torsor.add (-maxIntervalDays) from
   recurrences <-
@@ -142,9 +149,9 @@ run ParsedArgs {direction, from, dateFilters, maxResults, maxIntervalDays} = run
     .| occurrences direction recurrences
     .| takeC maxResults
     .| takeWhileC (\(day', _) -> day' >= minDay && day' <= maxDay)
-    .| printOccurrences
-    .| encodeUtf8C
-    .| stdoutC
+    .| case output of
+      Console -> printOccurrencesForConsole
+      Html -> printOccurrencesForHtml
 
 eventOrWarning :: Either String Event -> IO (Maybe Event)
 eventOrWarning (Left warning) = do
@@ -155,37 +162,43 @@ eventOrWarning (Right event) = pure (Just event)
 parseLine :: Text -> Either String Event
 parseLine = parseOnly (parserEvent <* endOfInput)
 
-printOccurrences :: (Monad m) => ConduitT (Day, Event) Text m ()
-printOccurrences = do
-  occurrence <- headC
-  whenJust occurrence $ \(day', event) -> do
-    let date = dayToDate day'
-    yield "["
-    yield $ caseDayOfWeek shortDayOfWeek (dateToDayOfWeek date)
-    yield " "
-    yield . intToText . getDayOfMonth $ dateDay date
-    yield " "
-    yield $ caseMonth shortMonth (dateMonth date)
-    yield " "
-    yield . intToText . getYear $ dateYear date
-    whenJust (time event) $ \time' -> do
-      yield " "
-      yield . intToText . timeOfDayHour $ startTime time'
-      yield ":"
-      yield . intToText2 . timeOfDayMinute $ startTime time'
-      whenJust (durationMinutes time') $ \durationMinutes' -> do
-        yield "+"
-        yield . intToText . fromIntegral $ durationMinutes' `div` 60
-        yield ":"
-        yield . intToText2 . fromIntegral $ durationMinutes' `mod` 60
-      whenJust (timezone time') $ \timezone' -> do
-        yield " ("
-        yield timezone'
-        yield ")"
-    yield "] "
-    yield $ description event
-    yield "\n"
-    printOccurrences
+printOccurrencesForConsole :: ConduitT (Day, Event) Void IO ()
+printOccurrencesForConsole = loop .| encodeUtf8C .| stdoutC
+  where
+    loop :: (Monad m) => ConduitT (Day, Event) Text m ()
+    loop = do
+      occurrence <- headC
+      whenJust occurrence $ \(day', event) -> do
+        let date = dayToDate day'
+        yield "["
+        yield $ caseDayOfWeek shortDayOfWeek (dateToDayOfWeek date)
+        yield " "
+        yield . intToText . getDayOfMonth $ dateDay date
+        yield " "
+        yield $ caseMonth shortMonth (dateMonth date)
+        yield " "
+        yield . intToText . getYear $ dateYear date
+        whenJust (time event) $ \time' -> do
+          yield " "
+          yield . intToText . timeOfDayHour $ startTime time'
+          yield ":"
+          yield . intToText2 . timeOfDayMinute $ startTime time'
+          whenJust (durationMinutes time') $ \durationMinutes' -> do
+            yield "+"
+            yield . intToText . fromIntegral $ durationMinutes' `div` 60
+            yield ":"
+            yield . intToText2 . fromIntegral $ durationMinutes' `mod` 60
+          whenJust (timezone time') $ \timezone' -> do
+            yield " ("
+            yield timezone'
+            yield ")"
+        yield "] "
+        yield $ description event
+        yield "\n"
+        loop
+
+printOccurrencesForHtml :: ConduitT (Day, Event) Void IO ()
+printOccurrencesForHtml = undefined
 
 intToText :: Int -> Text
 intToText = toStrict . toLazyText . Builder.Int.decimal
