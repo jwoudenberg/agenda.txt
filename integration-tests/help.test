@@ -7,7 +7,6 @@ Usage: cat agenda.txt | agenda-txt {flags} [patterns]
 Flags:
   --help              Show this help text
   --past              Show past instead of future events
-  --from YYYY-MM-DD   Choose a different starting date than today
 
 Patterns:
   YYYY-MM-DD     Matches a particular date. Year, month, or day
@@ -48,7 +47,6 @@ Usage: cat agenda.txt | agenda-txt {flags} [patterns]
 Flags:
   --help              Show this help text
   --past              Show past instead of future events
-  --from YYYY-MM-DD   Choose a different starting date than today
 
 Patterns:
   YYYY-MM-DD     Matches a particular date. Year, month, or day

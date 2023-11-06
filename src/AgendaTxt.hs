@@ -43,7 +43,6 @@ showHelp h = do
   hPutStrLn h "Flags:"
   hPutStrLn h "  --help              Show this help text"
   hPutStrLn h "  --past              Show past instead of future events"
-  hPutStrLn h "  --from YYYY-MM-DD   Choose a different starting date than today"
   hPutStrLn h ""
   hPutStrLn h "Patterns:"
   hPutStrLn h "  YYYY-MM-DD     Matches a particular date. Year, month, or day"
@@ -107,13 +106,13 @@ parseArgs parsed args =
       ShowHelp
     "--past" : rest ->
       parseArgs parsed {direction = Past} rest
+    -- These options are intentionally not documented in the API. I have them
+    -- for testing purposes only. Should they be used for real, I'd like to
+    -- reconsider my design rather than making these 'official'.
     "--from" : dateString : rest ->
       case parseOnly (parser_Ymd (Just '-') <* endOfInput) (pack dateString) of
         Right date -> parseArgs parsed {from = dateToDay date} rest
         Left _ -> ParseError ("Can't parse --from date: " <> dateString)
-    -- These options are intentionally not documented in the API. I have them
-    -- for testing purposes only. Should they be used for real, I'd like to
-    -- reconsider my design rather than making these 'official'.
     "--max-results" : amountString : rest ->
       case readMaybe amountString of
         Just amount -> parseArgs parsed {maxResults = amount} rest
