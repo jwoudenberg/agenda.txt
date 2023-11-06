@@ -35,6 +35,9 @@ tests:
 dependencies:
 - base >= 4.10.1.0 && < 5
 - attoparsec
+- blaze-html
+- blaze-markup
+- bytestring
 - chronos
 - conduit
 - containers

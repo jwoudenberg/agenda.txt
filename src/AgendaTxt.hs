@@ -4,6 +4,7 @@ import Chronos
 import Conduit
 import Control.Monad (when)
 import Data.Attoparsec.Text
+import qualified Data.ByteString as ByteString
 import Data.Char (isAlpha)
 import Data.Foldable (for_)
 import Data.Maybe (catMaybes)
@@ -15,6 +16,9 @@ import qualified Data.Text.Lazy.Builder.Int as Builder.Int
 import System.Environment (getArgs)
 import qualified System.Exit
 import System.IO (Handle, hPutStrLn, stderr, stdout)
+import qualified Text.Blaze as Blaze
+import qualified Text.Blaze.Html5 as Html5
+import Text.Blaze.Renderer.Utf8 (renderMarkupToByteStringIO)
 import Text.Read (readMaybe)
 import qualified Torsor
 
@@ -198,7 +202,52 @@ printOccurrencesForConsole = loop .| encodeUtf8C .| stdoutC
         loop
 
 printOccurrencesForHtml :: ConduitT (Day, Event) Void IO ()
-printOccurrencesForHtml = undefined
+printOccurrencesForHtml = do
+  occurrenceElems <- fst <$> foldlC occurrenceToHtml (mempty, Nothing)
+  liftIO . renderMarkupToByteStringIO ByteString.putStr . Html5.html $ do
+    Html5.head $ do
+      Html5.title "agenda.txt"
+    Html5.body occurrenceElems
+
+occurrenceToHtml :: (Html5.Html, Maybe Date) -> (Day, Event) -> (Html5.Html, Maybe Date)
+occurrenceToHtml (prevHtml, prevDate) (day', event) =
+  ( prevHtml <> newHtml,
+    Just date
+  )
+  where
+    date = dayToDate day'
+    newMonth =
+      nothingOr (/= dateYear date) (dateYear <$> prevDate)
+        || nothingOr (/= dateMonth date) (dateMonth <$> prevDate)
+    weekNo d = (getDay d + 2) `div` 7
+    newWeek = nothingOr (/= weekNo day') (weekNo . dateToDay <$> prevDate)
+    newHtml = do
+      when newMonth $ Html5.h2 $ do
+        Blaze.toMarkup $ caseMonth shortMonth (dateMonth date)
+        Blaze.string " "
+        Blaze.toMarkup . intToText . getYear $ dateYear date
+      when (not newMonth && newWeek) Html5.hr
+      Html5.p $ do
+        Blaze.string "["
+        Blaze.toMarkup $ caseDayOfWeek shortDayOfWeek (dateToDayOfWeek date)
+        Blaze.string " "
+        Blaze.toMarkup . intToText . getDayOfMonth $ dateDay date
+        whenJust (time event) $ \time' -> do
+          Blaze.string " "
+          Blaze.toMarkup . intToText . timeOfDayHour $ startTime time'
+          Blaze.string ":"
+          Blaze.toMarkup . intToText2 . timeOfDayMinute $ startTime time'
+          whenJust (durationMinutes time') $ \durationMinutes' -> do
+            Blaze.string "+"
+            Blaze.toMarkup . intToText . fromIntegral $ durationMinutes' `div` 60
+            Blaze.string ":"
+            Blaze.toMarkup . intToText2 . fromIntegral $ durationMinutes' `mod` 60
+          whenJust (timezone time') $ \timezone' -> do
+            Blaze.string " ("
+            Blaze.toMarkup timezone'
+            Blaze.string ")"
+        Blaze.string "] "
+        Blaze.toMarkup $ description event
 
 intToText :: Int -> Text
 intToText = toStrict . toLazyText . Builder.Int.decimal
