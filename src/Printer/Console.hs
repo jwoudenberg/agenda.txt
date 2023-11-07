@@ -1,12 +1,12 @@
 module Printer.Console (run) where
 
-import Engine
 import Chronos
 import Conduit
 import Data.Text (Text)
 import Data.Text.Lazy (toStrict)
 import Data.Text.Lazy.Builder (toLazyText)
 import qualified Data.Text.Lazy.Builder.Int as Builder.Int
+import Engine
 
 run :: ConduitT (Day, Event) Void IO ()
 run = loop .| encodeUtf8C .| stdoutC
@@ -57,4 +57,4 @@ shortDayOfWeek :: DayOfWeekMatch Text
 shortDayOfWeek = buildDayOfWeekMatch "Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"
 
 shortMonth :: MonthMatch Text
-shortMonth = buildMonthMatch "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Set" "Oct" "Nov" "Dec"
+shortMonth = buildMonthMatch "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"
