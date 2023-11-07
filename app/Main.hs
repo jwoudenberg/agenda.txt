@@ -1,6 +1,6 @@
 module Main (main) where
 
-import qualified AgendaTxt
+import qualified CLI
 
 main :: IO ()
-main = AgendaTxt.main
+main = CLI.main

@@ -1,0 +1,158 @@
+module CLI where
+
+import Engine
+import Chronos
+import Conduit
+import Data.Attoparsec.Text
+import Data.Text (Text, pack)
+import qualified Printer.Console
+import qualified Printer.Html
+import System.Environment (getArgs)
+import qualified System.Exit
+import System.IO (Handle, hPutStrLn, stderr, stdout)
+import Text.Read (readMaybe)
+import qualified Torsor
+
+main :: IO ()
+main = do
+  parsedArgs <- parseArgs <$> defaultParsedArgs <*> getArgs
+  case parsedArgs of
+    ShowHelp -> do
+      putStrLn "Parse plain text agenda.txt files."
+      putStrLn ""
+      showHelp stdout
+      putStrLn ""
+      showStdinHelp stdout
+    ParseError err -> do
+      hPutStrLn stderr err
+      hPutStrLn stderr ""
+      showHelp stderr
+      System.Exit.exitFailure
+    Parsed result ->
+      run result
+
+showHelp :: Handle -> IO ()
+showHelp h = do
+  hPutStrLn h "Usage: cat agenda.txt | agenda-txt {flags} [patterns]"
+  hPutStrLn h ""
+  hPutStrLn h "Flags:"
+  hPutStrLn h "  --help              Show this help text"
+  hPutStrLn h "  --past              Show past instead of future events"
+  hPutStrLn h "  --html              Output events in HTML format"
+  hPutStrLn h ""
+  hPutStrLn h "Patterns:"
+  hPutStrLn h "  YYYY-MM-DD     Matches a particular date. Year, month, or day"
+  hPutStrLn h "                 can be left out, for instance:"
+  hPutStrLn h "                 1989-1-11   Matches only January 11th 1989"
+  hPutStrLn h "                 --1-11      Matches January 11th every year"
+  hPutStrLn h "                 --1-        Matches every day in January"
+  hPutStrLn h ""
+  hPutStrLn h "  !YYYY-MM-DD    Exclude a particular date. Year, month, or day"
+  hPutStrLn h "                 can be left out as in the pattern above."
+  hPutStrLn h ""
+  hPutStrLn h "  <=YYYY-MM-DD   Matches all days before a particular date."
+  hPutStrLn h ""
+  hPutStrLn h "  mon .. sun     Matches a particular day of the week"
+
+showStdinHelp :: Handle -> IO ()
+showStdinHelp h = do
+  hPutStrLn h "Stdin:"
+  hPutStrLn h "  Stdin expects one event per line, with the following format:"
+  hPutStrLn h "    2023-11-01 [wed <=2023-12-20] 19:30 +2:00 (CET) Dancing class"
+  hPutStrLn h ""
+  hPutStrLn h "  We see, in order:"
+  hPutStrLn h "    2023-11-01           First occurence of an event (required)"
+  hPutStrLn h "    [wed <=2023-12-20]   Extra event days, using CLI patterns"
+  hPutStrLn h "    19:30                Event starting time in 24 hour clock"
+  hPutStrLn h "    +2:00                Event duration"
+  hPutStrLn h "    (CET)                Timezone of the starting time"
+  hPutStrLn h "    Dancing class        Event description"
+  hPutStrLn h "  All elements but the first occurence date are optional."
+
+data ParsedArgsResult
+  = ShowHelp
+  | ParseError String
+  | Parsed ParsedArgs
+
+data ParsedArgs = ParsedArgs
+  { from :: Day,
+    direction :: Direction,
+    output :: Output,
+    dateFilters :: [DateFilter],
+    maxResults :: Int,
+    maxIntervalDays :: Int
+  }
+
+data Output = Console | Html
+
+defaultParsedArgs :: IO ParsedArgs
+defaultParsedArgs = do
+  from <- today
+  pure
+    ParsedArgs
+      { from = from,
+        direction = Future,
+        output = Console,
+        dateFilters = [],
+        maxResults = 10_000,
+        maxIntervalDays = 365_00 -- One century
+      }
+
+parseArgs :: ParsedArgs -> [String] -> ParsedArgsResult
+parseArgs parsed args =
+  case args of
+    [] -> Parsed parsed
+    "--help" : _ ->
+      ShowHelp
+    "--past" : rest ->
+      parseArgs parsed {direction = Past} rest
+    "--html" : rest ->
+      parseArgs parsed {output = Html} rest
+    -- These options are intentionally not documented in the API. I have them
+    -- for testing purposes only. Should they be used for real, I'd like to
+    -- reconsider my design rather than making these 'official'.
+    "--from" : dateString : rest ->
+      case parseOnly (parser_Ymd (Just '-') <* endOfInput) (pack dateString) of
+        Right date -> parseArgs parsed {from = dateToDay date} rest
+        Left _ -> ParseError ("Can't parse --from date: " <> dateString)
+    "--max-results" : amountString : rest ->
+      case readMaybe amountString of
+        Just amount -> parseArgs parsed {maxResults = amount} rest
+        Nothing -> ParseError ("Can't parse amount in --max-results parameter: " <> amountString)
+    "--max-interval-days" : amountString : rest ->
+      case readMaybe amountString of
+        Just amount -> parseArgs parsed {maxIntervalDays = amount} rest
+        Nothing -> ParseError ("Can't parse amount in --max-interval-days parameter: " <> amountString)
+    arg : rest ->
+      case parseOnly (parserRepeatStep <* endOfInput) (pack arg) of
+        Right dateFilter -> parseArgs parsed {dateFilters = dateFilter : (dateFilters parsed)} rest
+        Left _ -> ParseError ("Unknown argument: " <> arg)
+
+run :: ParsedArgs -> IO ()
+run ParsedArgs {direction, output, from, dateFilters, maxResults, maxIntervalDays} = runConduit $ do
+  let maxDay = Torsor.add maxIntervalDays from
+  let minDay = Torsor.add (-maxIntervalDays) from
+  recurrences <-
+    stdinC
+      .| decodeUtf8LenientC
+      .| linesUnboundedC
+      .| concatMapMC (eventOrWarning . parseLine)
+      .| mapC eventToRecurrence
+      .| sinkList
+
+  days from direction dateFilters
+    .| occurrences direction recurrences
+    .| takeC maxResults
+    .| takeWhileC (\(day', _) -> day' >= minDay && day' <= maxDay)
+    .| case output of
+      Console -> Printer.Console.run
+      Html -> Printer.Html.run
+
+eventOrWarning :: Either String Event -> IO (Maybe Event)
+eventOrWarning (Left warning) = do
+  hPutStrLn stderr $ "Warning: " <> warning
+  pure Nothing
+eventOrWarning (Right event) = pure (Just event)
+
+parseLine :: Text -> Either String Event
+parseLine = parseOnly (parserEvent <* endOfInput)

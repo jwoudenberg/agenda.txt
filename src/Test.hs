@@ -1,6 +1,6 @@
 module Test (Test.main) where
 
-import AgendaTxt
+import Engine
 import Chronos hiding (day)
 import Conduit
 import Data.Attoparsec.Text (parseOnly)

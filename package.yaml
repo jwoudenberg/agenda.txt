@@ -12,7 +12,7 @@ extra-doc-files:
 - README.md
 library:
   exposed-modules:
-  - AgendaTxt
+  - CLI
   - Test
   source-dirs: src
 executables:

@@ -25,9 +25,12 @@ source-repository head
 
 library
   exposed-modules:
-      AgendaTxt
+      CLI
       Test
   other-modules:
+      Engine
+      Printer.Console
+      Printer.Html
       Paths_agenda_txt
   hs-source-dirs:
       src
