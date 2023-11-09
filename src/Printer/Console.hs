@@ -8,7 +8,7 @@ import Data.Text.Lazy.Builder (toLazyText)
 import qualified Data.Text.Lazy.Builder.Int as Builder.Int
 import Engine
 
-run :: ConduitT (Day, Event) Void IO ()
+run :: (MonadIO m) => ConduitT (Day, Event) Void m ()
 run = loop .| encodeUtf8C .| stdoutC
   where
     loop :: (Monad m) => ConduitT (Day, Event) Text m ()

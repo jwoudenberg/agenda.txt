@@ -1,10 +1,10 @@
 module CLI where
 
-import Engine
 import Chronos
 import Conduit
 import Data.Attoparsec.Text
 import Data.Text (Text, pack)
+import Engine
 import qualified Printer.Console
 import qualified Printer.Html
 import System.Environment (getArgs)
@@ -129,28 +129,29 @@ parseArgs parsed args =
         Left _ -> ParseError ("Unknown argument: " <> arg)
 
 run :: ParsedArgs -> IO ()
-run ParsedArgs {direction, output, from, dateFilters, maxResults, maxIntervalDays} = runConduit $ do
-  let maxDay = Torsor.add maxIntervalDays from
-  let minDay = Torsor.add (-maxIntervalDays) from
-  recurrences <-
-    stdinC
-      .| decodeUtf8LenientC
-      .| linesUnboundedC
-      .| concatMapMC (eventOrWarning . parseLine)
-      .| mapC eventToRecurrence
-      .| sinkList
+run ParsedArgs {direction, output, from, dateFilters, maxResults, maxIntervalDays} =
+  runResourceT . runConduit $ do
+    let maxDay = Torsor.add maxIntervalDays from
+    let minDay = Torsor.add (-maxIntervalDays) from
+    recurrences <-
+      stdinC
+        .| decodeUtf8LenientC
+        .| linesUnboundedC
+        .| concatMapMC (eventOrWarning . parseLine)
+        .| mapC eventToRecurrence
+        .| sinkList
 
-  days from direction dateFilters
-    .| occurrences direction recurrences
-    .| takeC maxResults
-    .| takeWhileC (\(day', _) -> day' >= minDay && day' <= maxDay)
-    .| case output of
-      Console -> Printer.Console.run
-      Html -> Printer.Html.run
+    days from direction dateFilters
+      .| occurrences direction recurrences
+      .| takeC maxResults
+      .| takeWhileC (\(day', _) -> day' >= minDay && day' <= maxDay)
+      .| case output of
+        Console -> Printer.Console.run
+        Html -> Printer.Html.run
 
-eventOrWarning :: Either String Event -> IO (Maybe Event)
+eventOrWarning :: (MonadIO m) => Either String Event -> m (Maybe Event)
 eventOrWarning (Left warning) = do
-  hPutStrLn stderr $ "Warning: " <> warning
+  liftIO $ hPutStrLn stderr $ "Warning: " <> warning
   pure Nothing
 eventOrWarning (Right event) = pure (Just event)
 

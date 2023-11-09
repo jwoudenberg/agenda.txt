@@ -2,8 +2,9 @@ module Printer.Html (run) where
 
 import Chronos
 import Conduit
-import Control.Monad (when)
-import qualified Data.ByteString as ByteString
+import Control.Exception (mask_)
+import Control.Monad (void, when)
+import Data.ByteString (putStr)
 import Data.Text (Text)
 import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.Builder.Int as Builder.Int
@@ -12,65 +13,76 @@ import Text.Blaze
 import Text.Blaze.Html5 as Html5
 import Text.Blaze.Html5.Attributes as Attr
 import Text.Blaze.Renderer.Utf8 (renderMarkupToByteStringIO)
+import Prelude hiding (putStr)
 
-run :: ConduitT (Day, Event) Void IO ()
-run = do
-  occurrenceElems <- fst <$> foldlC occurrenceToHtml (mempty, Nothing)
-  liftIO . renderMarkupToByteStringIO ByteString.putStr $
-    html ! lang "en-US" $ do
-      Html5.head $ do
-        Html5.meta ! charset "UTF-8"
-        Html5.title "agenda.txt"
-        Html5.style css
-      body occurrenceElems
+run :: ConduitT (Day, Event) Void (ResourceT IO) ()
+run =
+  bracketP
+    ( do
+        putStr "<!doctype html><html lang=\"en-US\"><head>"
+        putStr "<meta charset=\"utf-8\">"
+        putStr "<meta name=\"viewport\" content=\"width=device-width\">"
+        putStr "<title>agenda.txt</title>"
+        putStr "<style>"
+        css
+        putStr "</style></head><body>"
+    )
+    (\_ -> putStr "</body></html>")
+    ( \_ ->
+        void $
+          foldMC
+            ( \prevDay (day', event) -> do
+                let html' = occurrenceToHtml day' event prevDay
+                liftIO $ mask_ $ renderMarkupToByteStringIO putStr html'
+                pure day'
+            )
+            (Day 0)
+    )
 
-occurrenceToHtml :: (Html, Maybe Date) -> (Day, Event) -> (Html, Maybe Date)
-occurrenceToHtml (prevHtml, prevDate) (day', event) =
-  ( prevHtml <> newHtml,
-    Just date
-  )
-  where
-    date = dayToDate day'
-    newMonth =
-      nothingOr (/= dateYear date) (dateYear <$> prevDate)
-        || nothingOr (/= dateMonth date) (dateMonth <$> prevDate)
-    weekNo d = (getDay d + 2) `Prelude.div` 7
-    newWeek = nothingOr (/= weekNo day') (weekNo . dateToDay <$> prevDate)
-    newDay = nothingOr (/= date) prevDate
-    newHtml = do
-      when newMonth $ h2 ! class_ "month-header" $ do
-        toMarkup $ caseMonth shortMonth (dateMonth date)
-        " "
-        toMarkup . getYear $ dateYear date
-      when (not newMonth && newWeek) (hr ! class_ "week-seperator")
-      let dayClass = if (not newMonth && not newWeek && newDay) then "event new-day" else "event"
-      p ! class_ dayClass $ do
-        Html5.time ! datetimeForEvent event ! class_ "datetime" $ do
-          Html5.span ! class_ "date" $ do
-            toMarkup $ caseDayOfWeek shortDayOfWeek (dateToDayOfWeek date)
-            " "
-            toMarkup . getDayOfMonth $ dateDay date
-          whenJust (Engine.time event) $ \time' -> do
-            Html5.span ! class_ "time" $ do
-              toMarkup . timeOfDayHour $ startTime time'
+occurrenceToHtml :: Day -> Event -> Day -> Html
+occurrenceToHtml day' event prevDay =
+  let date = dayToDate day'
+      prevDate = dayToDate prevDay
+      newMonth =
+        dateYear prevDate /= dateYear date
+          || (dateMonth prevDate /= dateMonth date)
+      weekNo d = (getDay d + 2) `Prelude.div` 7
+      newWeek = weekNo prevDay /= weekNo day'
+      newDay = prevDate /= date
+   in do
+        when newMonth $ h2 ! class_ "month-header" $ do
+          toMarkup $ caseMonth shortMonth (dateMonth date)
+          " "
+          toMarkup . getYear $ dateYear date
+        when (not newMonth && newWeek) (hr ! class_ "week-seperator")
+        let dayClass = if (not newMonth && not newWeek && newDay) then "event new-day" else "event"
+        p ! class_ dayClass $ do
+          Html5.time ! datetimeForEvent event ! class_ "datetime" $ do
+            Html5.span ! class_ "date" $ do
+              toMarkup $ caseDayOfWeek shortDayOfWeek (dateToDayOfWeek date)
+              " "
+              toMarkup . getDayOfMonth $ dateDay date
+            whenJust (Engine.time event) $ \time' -> do
+              Html5.span ! class_ "time" $ do
+                toMarkup . timeOfDayHour $ startTime time'
+                ":"
+                toMarkup . twoDigitInt . timeOfDayMinute $ startTime time'
+                whenJust (timezone time') $ \timezone' -> do
+                  " ("
+                  toMarkup timezone'
+                  ")"
+          whenJust (durationMinutes =<< Engine.time event) $ \durationMinutes' -> do
+            Html5.time ! datetimeForDuration durationMinutes' ! class_ "duration" $ do
+              "+"
+              toMarkup $ durationMinutes' `Prelude.div` 60
               ":"
-              toMarkup . twoDigitInt . timeOfDayMinute $ startTime time'
-              whenJust (timezone time') $ \timezone' -> do
-                " ("
-                toMarkup timezone'
-                ")"
-        whenJust (durationMinutes =<< Engine.time event) $ \durationMinutes' -> do
-          Html5.time ! datetimeForDuration durationMinutes' ! class_ "duration" $ do
-            "+"
-            toMarkup $ durationMinutes' `Prelude.div` 60
-            ":"
-            toMarkup . twoDigitInt . fromIntegral $ durationMinutes' `mod` 60
-        Html5.span ! class_ "description" $ toMarkup (description event)
+              toMarkup . twoDigitInt . fromIntegral $ durationMinutes' `mod` 60
+          Html5.span ! class_ "description" $ toMarkup (description event)
 
 datetimeForEvent :: Event -> Attribute
 datetimeForEvent event =
   datetime $
-    toValue (builder_Ymd (Just ':') (dayToDate (startDay event)))
+    toValue (builder_Ymd (Just '-') (dayToDate (startDay event)))
       <> case Engine.time event of
         Nothing -> mempty
         Just time' ->
@@ -110,40 +122,40 @@ shortMonth =
     "November"
     "December"
 
-css :: Markup
+css :: IO ()
 css = do
-  "body {"
-  "  font-family: helvetica;"
-  "  max-width: 30rem;"
-  "  margin: auto;"
-  "  padding: 0.5rem;"
-  "}"
-  ".month-header {"
-  "  font-size: 1em;"
-  "  margin-bottom: 0.3rem;"
-  "}"
-  "* + .month-header {"
-  "  margin-top: 2rem;"
-  "}"
-  ".week-seperator {"
-  "  height: 1px;"
-  "  border: none;"
-  "  background-color: #ccc;"
-  "}"
-  ".event {"
-  "  margin: 0;"
-  "  margin-left: 4rem;"
-  "  font-variant-numeric: oldstyle-nums;"
-  "}"
-  ".event + .event.new-day {"
-  "  margin-top: 0.5rem;"
-  "}"
-  ".date {"
-  "  width: 4rem;"
-  "  margin-left: -4rem;"
-  "  display: inline-block;"
-  "}"
-  ".time, .duration {"
-  "  margin-right: 0.3rem;"
-  "  font-style: italic;"
-  "}"
+  putStr "body {"
+  putStr "  font-family: helvetica;"
+  putStr "  max-width: 30rem;"
+  putStr "  margin: auto;"
+  putStr "  padding: 0.5rem;"
+  putStr "}"
+  putStr ".month-header {"
+  putStr "  font-size: 1em;"
+  putStr "  margin-bottom: 0.3rem;"
+  putStr "}"
+  putStr "* + .month-header {"
+  putStr "  margin-top: 2rem;"
+  putStr "}"
+  putStr ".week-seperator {"
+  putStr "  height: 1px;"
+  putStr "  border: none;"
+  putStr "  background-color: #ccc;"
+  putStr "}"
+  putStr ".event {"
+  putStr "  margin: 0;"
+  putStr "  margin-left: 4rem;"
+  putStr "  font-variant-numeric: oldstyle-nums;"
+  putStr "}"
+  putStr ".event + .event.new-day {"
+  putStr "  margin-top: 0.5rem;"
+  putStr "}"
+  putStr ".date {"
+  putStr "  width: 4rem;"
+  putStr "  margin-left: -4rem;"
+  putStr "  display: inline-block;"
+  putStr "}"
+  putStr ".time, .duration {"
+  putStr "  margin-right: 0.3rem;"
+  putStr "  font-style: italic;"
+  putStr "}"
