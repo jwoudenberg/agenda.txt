@@ -3,6 +3,7 @@ module CLI where
 import Chronos
 import Conduit
 import Data.Attoparsec.Text
+import Data.List (sortOn)
 import Data.Text (Text, pack)
 import Engine
 import qualified Printer.Console
@@ -133,13 +134,14 @@ run ParsedArgs {direction, output, from, dateFilters, maxResults, maxIntervalDay
   runResourceT . runConduit $ do
     let maxDay = Torsor.add maxIntervalDays from
     let minDay = Torsor.add (-maxIntervalDays) from
-    recurrences <-
+    events <-
       stdinC
         .| decodeUtf8LenientC
         .| linesUnboundedC
         .| concatMapMC (eventOrWarning . parseLine)
-        .| mapC eventToRecurrence
         .| sinkList
+
+    let recurrences = fmap eventToRecurrence $ sortOn (fmap startTime . time) events
 
     days from direction dateFilters
       .| occurrences direction recurrences
