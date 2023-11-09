@@ -2,6 +2,7 @@ module CLI where
 
 import Chronos
 import Conduit
+import Control.Monad (when)
 import Data.Attoparsec.Text
 import Data.List (sortOn)
 import Data.Text (Text, pack)
@@ -10,7 +11,7 @@ import qualified Printer.Console
 import qualified Printer.Html
 import System.Environment (getArgs)
 import qualified System.Exit
-import System.IO (Handle, hPutStrLn, stderr, stdout)
+import System.IO (Handle, hIsTerminalDevice, hPutStrLn, stderr, stdin, stdout)
 import Text.Read (readMaybe)
 import qualified Torsor
 
@@ -29,7 +30,13 @@ main = do
       hPutStrLn stderr ""
       showHelp stderr
       System.Exit.exitFailure
-    Parsed result ->
+    Parsed result -> do
+      isTTY <- hIsTerminalDevice stdin
+      when isTTY $ do
+        hPutStrLn stderr "Missing agenda.txt input on stdin."
+        hPutStrLn stderr ""
+        showHelp stderr
+        System.Exit.exitFailure
       run result
 
 showHelp :: Handle -> IO ()
