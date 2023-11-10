@@ -6,5 +6,6 @@ $ ./run.sh
 >
 [Wed 8 Nov 2023] Concert
 >2
-Warning: Failed reading: input does not start with a digit
+Ignoring line: Not a valid agenda.txt line
+      Warning: Failed reading: input does not start with a digit
 >= 0

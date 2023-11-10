@@ -5,7 +5,7 @@ import Conduit
 import Control.Monad (when)
 import Data.Attoparsec.Text
 import Data.List (sortOn)
-import Data.Text (Text, pack)
+import Data.Text (Text, pack, unpack)
 import Engine
 import qualified Printer.Console
 import qualified Printer.Html
@@ -131,7 +131,7 @@ run ParsedArgs {direction, output, from, dateFilters} =
       stdinC
         .| decodeUtf8LenientC
         .| linesUnboundedC
-        .| concatMapMC (eventOrWarning . parseLine)
+        .| concatMapMC (\line -> eventOrWarning line $ parseLine line)
         .| sinkList
 
     let recurrences = fmap eventToRecurrence $ sortOn (fmap startTime . time) events
@@ -142,11 +142,12 @@ run ParsedArgs {direction, output, from, dateFilters} =
         Console -> Printer.Console.run
         Html -> Printer.Html.run
 
-eventOrWarning :: (MonadIO m) => Either String Event -> m (Maybe Event)
-eventOrWarning (Left warning) = do
-  liftIO $ hPutStrLn stderr $ "Warning: " <> warning
+eventOrWarning :: (MonadIO m) => Text -> Either String Event -> m (Maybe Event)
+eventOrWarning line (Left warning) = liftIO $ do
+  hPutStrLn stderr $ "Ignoring line: " <> unpack line
+  hPutStrLn stderr $ "      Warning: " <> warning
   pure Nothing
-eventOrWarning (Right event) = pure (Just event)
+eventOrWarning _ (Right event) = pure (Just event)
 
 parseLine :: Text -> Either String Event
 parseLine = parseOnly (parserEvent <* endOfInput)
