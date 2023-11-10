@@ -1,0 +1,9 @@
+<
+2023-11-08 Concert
+2023-11-05 Boardgames
+2023-11-02 Dancing
+$ ./run.sh --past
+>
+[Sun 5 Nov 2023] Boardgames
+[Thu 2 Nov 2023] Dancing
+>= 0
