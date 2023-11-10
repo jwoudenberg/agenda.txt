@@ -5,7 +5,7 @@ import Conduit
 import Control.Monad (when)
 import Data.Attoparsec.Text
 import Data.List (sortOn)
-import Data.Text (Text, pack, unpack)
+import Data.Text as Text (Text, null, pack, unpack)
 import Engine
 import qualified Printer.Console
 import qualified Printer.Html
@@ -131,6 +131,7 @@ run ParsedArgs {direction, output, from, dateFilters} =
       stdinC
         .| decodeUtf8LenientC
         .| linesUnboundedC
+        .| filterC (not . Text.null)
         .| concatMapMC (\line -> eventOrWarning line $ parseLine line)
         .| sinkList
 
