@@ -9,11 +9,9 @@ import Data.Text (Text, pack)
 import Engine
 import qualified Printer.Console
 import qualified Printer.Html
-import System.Environment (getArgs)
+import System.Environment (getArgs, lookupEnv)
 import qualified System.Exit
 import System.IO (Handle, hIsTerminalDevice, hPutStrLn, stderr, stdin, stdout)
-import Text.Read (readMaybe)
-import qualified Torsor
 
 main :: IO ()
 main = do
@@ -86,24 +84,24 @@ data ParsedArgs = ParsedArgs
   { from :: Day,
     direction :: Direction,
     output :: Output,
-    dateFilters :: [DateFilter],
-    maxResults :: Int,
-    maxIntervalDays :: Int
+    dateFilters :: [DateFilter]
   }
 
 data Output = Console | Html
 
 defaultParsedArgs :: IO ParsedArgs
 defaultParsedArgs = do
-  from <- today
+  from' <- maybe "" pack <$> lookupEnv "DEBUG_AGENDA_TXT_TODAY"
+  from <-
+    case parseOnly (parser_Ymd (Just '-') <* endOfInput) from' of
+      Right date -> pure (dateToDay date)
+      Left _ -> today
   pure
     ParsedArgs
       { from = from,
         direction = Future,
         output = Console,
-        dateFilters = [],
-        maxResults = 10_000,
-        maxIntervalDays = 365_00 -- One century
+        dateFilters = []
       }
 
 parseArgs :: ParsedArgs -> [String] -> ParsedArgsResult
@@ -119,28 +117,14 @@ parseArgs parsed args =
     -- These options are intentionally not documented in the API. I have them
     -- for testing purposes only. Should they be used for real, I'd like to
     -- reconsider my design rather than making these 'official'.
-    "--from" : dateString : rest ->
-      case parseOnly (parser_Ymd (Just '-') <* endOfInput) (pack dateString) of
-        Right date -> parseArgs parsed {from = dateToDay date} rest
-        Left _ -> ParseError ("Can't parse --from date: " <> dateString)
-    "--max-results" : amountString : rest ->
-      case readMaybe amountString of
-        Just amount -> parseArgs parsed {maxResults = amount} rest
-        Nothing -> ParseError ("Can't parse amount in --max-results parameter: " <> amountString)
-    "--max-interval-days" : amountString : rest ->
-      case readMaybe amountString of
-        Just amount -> parseArgs parsed {maxIntervalDays = amount} rest
-        Nothing -> ParseError ("Can't parse amount in --max-interval-days parameter: " <> amountString)
     arg : rest ->
       case parseOnly (parserRepeatStep <* endOfInput) (pack arg) of
         Right dateFilter -> parseArgs parsed {dateFilters = dateFilter : (dateFilters parsed)} rest
         Left _ -> ParseError ("Unknown argument: " <> arg)
 
 run :: ParsedArgs -> IO ()
-run ParsedArgs {direction, output, from, dateFilters, maxResults, maxIntervalDays} =
+run ParsedArgs {direction, output, from, dateFilters} =
   runResourceT . runConduit $ do
-    let maxDay = Torsor.add maxIntervalDays from
-    let minDay = Torsor.add (-maxIntervalDays) from
     events <-
       stdinC
         .| decodeUtf8LenientC
@@ -152,8 +136,6 @@ run ParsedArgs {direction, output, from, dateFilters, maxResults, maxIntervalDay
 
     days from direction dateFilters
       .| occurrences direction recurrences
-      .| takeC maxResults
-      .| takeWhileC (\(day', _) -> day' >= minDay && day' <= maxDay)
       .| case output of
         Console -> Printer.Console.run
         Html -> Printer.Html.run

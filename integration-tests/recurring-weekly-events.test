@@ -1,7 +1,8 @@
 <
 2023-11-06 [mon] Lessons
-$ ./run.sh --from 2023-11-08 2023-11-
+$ ./run.sh 2023-11-
 >
+[Mon 6 Nov 2023] Lessons
 [Mon 13 Nov 2023] Lessons
 [Mon 20 Nov 2023] Lessons
 [Mon 27 Nov 2023] Lessons
@@ -9,11 +10,10 @@ $ ./run.sh --from 2023-11-08 2023-11-
 
 
 <
-2023-11-06 [mon] Lessons
-$ ./run.sh --past --from 2023-12-01
+2023-10-14 [mon] Lessons
+$ ./run.sh --past
 >
-[Mon 27 Nov 2023] Lessons
-[Mon 20 Nov 2023] Lessons
-[Mon 13 Nov 2023] Lessons
-[Mon 6 Nov 2023] Lessons
+[Mon 30 Oct 2023] Lessons
+[Mon 23 Oct 2023] Lessons
+[Mon 16 Oct 2023] Lessons
 >= 0

@@ -2,7 +2,7 @@
 2023-11-08 Concert
 2023-11-05 Boardgames
 2023-11-02 Dancing
-$ ./run.sh --from 2023-11-05
+$ ./run.sh
 >
 [Sun 5 Nov 2023] Boardgames
 [Wed 8 Nov 2023] Concert
@@ -14,7 +14,7 @@ $ ./run.sh --from 2023-11-05
 2023-11-08 Concert
 2023-11-05 Boardgames
 2023-11-02 Dancing
-$ ./run.sh --past --from 2023-11-05
+$ ./run.sh --past
 >
 [Sun 5 Nov 2023] Boardgames
 [Thu 2 Nov 2023] Dancing
@@ -26,7 +26,7 @@ $ ./run.sh --past --from 2023-11-05
 2023-11-08 20:00+2:00 Concert
 2023-11-08 14:30+0:30 (CET) Meeting
 2023-11-08 22:30 Bedtime
-$ ./run.sh --from 2023-11-05
+$ ./run.sh
 >
 [Wed 8 Nov 2023 14:30+0:30 (CET)] Meeting
 [Wed 8 Nov 2023 20:00+2:00] Concert

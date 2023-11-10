@@ -8,4 +8,5 @@
 set -euo pipefail
 
 cabal build &> /dev/null
-cabal run agenda-txt -- "$@"
+# Set 'today' to a set date, so we get consistent test output
+DEBUG_AGENDA_TXT_TODAY=2023-11-05 cabal run agenda-txt -- "$@"
