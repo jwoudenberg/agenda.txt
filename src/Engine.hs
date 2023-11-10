@@ -119,7 +119,12 @@ eventToRecurrence event =
         }
     filters ->
       Recurrence
-        { onDay = matchesFilters (startDay event) filters,
+        { onDay =
+            \day' ->
+              case compare day' (startDay event) of
+                EQ -> True
+                GT -> matchesFilters (startDay event) filters day'
+                LT -> False,
           event = event,
           minDay = Just (startDay event),
           maxDay = filtersUpperBound (startDay event) filters
