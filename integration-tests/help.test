@@ -10,18 +10,20 @@ Flags:
   --html         Output events in HTML format
 
 Patterns:
-  YYYY-MM-DD     Matches a particular date. Year, month, or day
-                 can be left out, for instance:
-                 1989-1-11   Matches only January 11th 1989
-                 --1-11      Matches January 11th every year
-                 --1-        Matches every day in January
+  YYYY-MM-DD       Matches a particular date. Year, month, or day
+                   can be left out, for instance:
+                   1989-1-11   Matches only January 11th 1989
+                   --1-11      Matches January 11th every year
+                   --1-        Matches every day in January
 
-  !YYYY-MM-DD    Exclude a particular date. Year, month, or day
-                 can be left out as in the pattern above.
+  !YYYY-MM-DD      Exclude a particular date. Year, month, or day
+                   can be left out as in the pattern above.
 
-  <=YYYY-MM-DD   Matches all days before a particular date.
+  <=YYYY-MM-DD     Matches all days before a particular date.
 
-  mon .. sun     Matches a particular day of the week
+  *2d *2w *2m *2y  Matches the amount of days from today.
+
+  mon .. sun       Matches a particular day of the week
 
 Stdin:
   Stdin expects one event per line, with the following format:
@@ -51,16 +53,18 @@ Flags:
   --html         Output events in HTML format
 
 Patterns:
-  YYYY-MM-DD     Matches a particular date. Year, month, or day
-                 can be left out, for instance:
-                 1989-1-11   Matches only January 11th 1989
-                 --1-11      Matches January 11th every year
-                 --1-        Matches every day in January
+  YYYY-MM-DD       Matches a particular date. Year, month, or day
+                   can be left out, for instance:
+                   1989-1-11   Matches only January 11th 1989
+                   --1-11      Matches January 11th every year
+                   --1-        Matches every day in January
 
-  !YYYY-MM-DD    Exclude a particular date. Year, month, or day
-                 can be left out as in the pattern above.
+  !YYYY-MM-DD      Exclude a particular date. Year, month, or day
+                   can be left out as in the pattern above.
 
-  <=YYYY-MM-DD   Matches all days before a particular date.
+  <=YYYY-MM-DD     Matches all days before a particular date.
 
-  mon .. sun     Matches a particular day of the week
+  *2d *2w *2m *2y  Matches the amount of days from today.
+
+  mon .. sun       Matches a particular day of the week
 >= 1

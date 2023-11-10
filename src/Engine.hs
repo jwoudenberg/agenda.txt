@@ -9,12 +9,14 @@ import Data.Foldable (for_)
 import Data.Maybe (catMaybes)
 import Data.Scientific (floatingOrInteger)
 import Data.Text (Text)
+import qualified Torsor
 
 data DateFilter
   = DatePattern DatePattern
   | NotDatePattern DatePattern
   | WeekDay DayOfWeek
   | EndDate Day
+  | Period Period
   deriving (Eq, Show)
 
 data DatePattern = DatePattern_
@@ -22,6 +24,13 @@ data DatePattern = DatePattern_
     month :: Maybe Month,
     day :: Maybe DayOfMonth
   }
+  deriving (Eq, Show)
+
+data Period
+  = Days Word
+  | Weeks Word
+  | Months Word
+  | Years Word
   deriving (Eq, Show)
 
 data EventTime = EventTime
@@ -53,17 +62,17 @@ days from direction dateFilters =
       boundFilter =
         case direction of
           Future ->
-            (\bound -> takeWhileC (<= bound)) <$> filtersUpperBound dateFilters
+            (\bound -> takeWhileC (<= bound)) <$> filtersUpperBound from dateFilters
           Past ->
             (\bound -> takeWhileC (>= bound)) <$> filtersLowerBound dateFilters
    in case boundFilter of
         Nothing ->
           daysUnbounded
-            .| filterC (matchesFilters dateFilters)
+            .| filterC (matchesFilters from dateFilters)
         Just boundFilter' ->
           daysUnbounded
             .| boundFilter'
-            .| filterC (matchesFilters dateFilters)
+            .| filterC (matchesFilters from dateFilters)
 
 -- The conduit produced by this function assumes input days are monotonically
 -- increasing or decreasing in the direction of the input argument.
@@ -110,10 +119,10 @@ eventToRecurrence event =
         }
     filters ->
       Recurrence
-        { onDay = matchesFilters filters,
+        { onDay = matchesFilters (startDay event) filters,
           event = event,
           minDay = Just (startDay event),
-          maxDay = filtersUpperBound filters
+          maxDay = filtersUpperBound (startDay event) filters
         }
 
 minimum' :: (Foldable f, Ord a) => f a -> Maybe a
@@ -130,27 +139,29 @@ maximum' = foldr keepUpper Nothing
     keepUpper x Nothing = Just x
     keepUpper x (Just y) = if x > y then Just x else Just y
 
-filtersUpperBound :: [DateFilter] -> Maybe Day
-filtersUpperBound = minimum' . catMaybes . fmap filterUpperBound
+filtersUpperBound :: Day -> [DateFilter] -> Maybe Day
+filtersUpperBound startDay = minimum' . catMaybes . fmap (filterUpperBound startDay)
 
-filterUpperBound :: DateFilter -> Maybe Day
-filterUpperBound (DatePattern pattern) = lastDayOfYear <$> year pattern
-filterUpperBound (NotDatePattern _) = Nothing
-filterUpperBound (WeekDay _) = Nothing
-filterUpperBound (EndDate endDate) = Just endDate
+filterUpperBound :: Day -> DateFilter -> Maybe Day
+filterUpperBound _ (DatePattern pattern) = lastDayOfYear <$> year pattern
+filterUpperBound _ (NotDatePattern _) = Nothing
+filterUpperBound _ (WeekDay _) = Nothing
+filterUpperBound _ (EndDate endDate) = Just endDate
+filterUpperBound startDay (Period period) = Just (addPeriod startDay period)
 
 lastDayOfYear :: Year -> Day
 lastDayOfYear year =
   pred . ordinalDateToDay $ OrdinalDate (nextYear year) (DayOfYear 1)
 
 filtersLowerBound :: [DateFilter] -> Maybe Day
-filtersLowerBound = maximum' . catMaybes . fmap filterUpperBound
+filtersLowerBound = maximum' . catMaybes . fmap filterLowerBound
 
 filterLowerBound :: DateFilter -> Maybe Day
 filterLowerBound (DatePattern pattern) = firstDayOfYear <$> year pattern
 filterLowerBound (NotDatePattern _) = Nothing
 filterLowerBound (WeekDay _) = Nothing
 filterLowerBound (EndDate _) = Nothing
+filterLowerBound (Period _) = Nothing
 
 firstDayOfYear :: Year -> Day
 firstDayOfYear year =
@@ -159,15 +170,16 @@ firstDayOfYear year =
 nextYear :: Year -> Year
 nextYear = Year . (+ 1) . getYear
 
-matchesFilters :: [DateFilter] -> Day -> Bool
-matchesFilters dateFilters day' =
-  all (matchesFilter day' (dayToDate day')) dateFilters
+matchesFilters :: Day -> [DateFilter] -> Day -> Bool
+matchesFilters startDay dateFilters day' =
+  all (matchesFilter startDay day' (dayToDate day')) dateFilters
 
-matchesFilter :: Day -> Date -> DateFilter -> Bool
-matchesFilter _ date (DatePattern pattern) = matchesPattern date pattern
-matchesFilter _ date (NotDatePattern pattern) = not (matchesPattern date pattern)
-matchesFilter _ date (WeekDay weekDay) = weekDay == dateToDayOfWeek date
-matchesFilter day' _ (EndDate endDate) = day' <= endDate
+matchesFilter :: Day -> Day -> Date -> DateFilter -> Bool
+matchesFilter _ _ date (DatePattern pattern) = matchesPattern date pattern
+matchesFilter _ _ date (NotDatePattern pattern) = not (matchesPattern date pattern)
+matchesFilter _ _ date (WeekDay weekDay) = weekDay == dateToDayOfWeek date
+matchesFilter _ day' _ (EndDate endDate) = day' <= endDate
+matchesFilter startDay day' _ (Period period) = day' <= addPeriod startDay period
 
 matchesPattern :: Date -> DatePattern -> Bool
 matchesPattern date pattern =
@@ -202,6 +214,7 @@ parserRepeatStep =
   choice
     [ NotDatePattern <$> (char '!' *> parserDatePattern),
       EndDate <$> (string "<=" *> parserDate),
+      Period <$> (char '*' *> parserPeriod),
       DatePattern <$> parserDatePattern,
       WeekDay <$> parserDayOfWeek
     ]
@@ -262,5 +275,23 @@ parserDayOfWeek =
 parserDate :: Parser Day
 parserDate = dateToDay <$> parser_Ymd (Just '-')
 
+parserPeriod :: Parser Period
+parserPeriod =
+  choice
+    [ fmap Days $ parserInt <* string "d",
+      fmap Weeks $ parserInt <* string "w",
+      fmap Months $ parserInt <* string "m",
+      fmap Years $ parserInt <* string "y"
+    ]
+
 parserTimeOfDay :: Parser TimeOfDay
 parserTimeOfDay = parser_HMS_opt_S (Just ':')
+
+periodToDays :: Period -> Word
+periodToDays (Days n) = n
+periodToDays (Weeks n) = 7 * n
+periodToDays (Months n) = 31 * n
+periodToDays (Years n) = 365 * n
+
+addPeriod :: Day -> Period -> Day
+addPeriod day' period = Torsor.add (fromIntegral (periodToDays period)) day'

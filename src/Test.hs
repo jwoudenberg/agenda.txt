@@ -1,6 +1,5 @@
 module Test (Test.main) where
 
-import Engine
 import Chronos hiding (day)
 import Conduit
 import Data.Attoparsec.Text (parseOnly)
@@ -11,6 +10,7 @@ import Data.Text (Text)
 import qualified Data.Text.Lazy
 import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.Builder as Builder
+import Engine
 import Hedgehog
 import Hedgehog.Gen as Gen
 import Hedgehog.Main (defaultMain)
@@ -174,6 +174,10 @@ builderRepeatFilter repeatFilter =
           (buildDayOfWeekMatch "sun" "mon" "tue" "wed" "thu" "fri" "sat")
           weekDay
     EndDate day -> pure "<=" <> builderDay day
+    Period (Days n) -> pure "*" <> builderInt n <> pure "d"
+    Period (Weeks n) -> pure "*" <> builderInt n <> pure "w"
+    Period (Months n) -> pure "*" <> builderInt n <> pure "m"
+    Period (Years n) -> pure "*" <> builderInt n <> pure "y"
 
 builderDatePattern :: DatePattern -> Gen Builder
 builderDatePattern datePattern =
@@ -226,7 +230,8 @@ genRepeatFilter =
     [ DatePattern <$> genDatePattern,
       NotDatePattern <$> genDatePattern,
       WeekDay <$> genDayOfWeek,
-      EndDate <$> genDay
+      EndDate <$> genDay,
+      Period <$> genPeriod
     ]
 
 genDatePattern :: Gen DatePattern
@@ -252,3 +257,7 @@ genTimeOfDay =
     <$> Gen.int (Range.linear 0 23)
     <*> Gen.int (Range.linear 0 59)
     <*> pure 0
+
+genPeriod :: Gen Period
+genPeriod =
+  element [Days, Weeks, Months, Years] <*> Gen.word (Range.linear 0 10)
