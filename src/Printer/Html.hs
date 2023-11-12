@@ -49,13 +49,20 @@ occurrenceToHtml day' event prevDay =
       weekNo d = (getDay d + 2) `Prelude.div` 7
       newWeek = weekNo prevDay /= weekNo day'
       newDay = prevDate /= date
+
+      -- Calculating the week number, which the ISO standard dictates is the
+      -- first week that contains at least 4 days of that year. It follows that
+      -- January 4th is always in the first week of the year.
+      year = dateYear (dayToDate day')
+      jan4 = ordinalDateToDay $ OrdinalDate year (DayOfYear 4)
+      yearWeekNo = 1 + ((52 + weekNo day' - weekNo jan4) `mod` 52)
    in do
         when newMonth $ h2 ! class_ "month-header" $ do
           toMarkup $ caseMonth shortMonth (dateMonth date)
           " "
           toMarkup . getYear $ dateYear date
-        when (not newMonth && newWeek) (hr ! class_ "week-seperator")
-        let dayClass = if (not newMonth && not newWeek && newDay) then "event new-day" else "event"
+        when newWeek $ Html5.div ! class_ "week-seperator" $ toMarkup yearWeekNo
+        let dayClass = if newDay then "event new-day" else "event"
         p ! class_ dayClass $ do
           Html5.time ! datetimeForEvent event ! class_ "datetime" $ do
             Html5.span ! class_ "date" $ do
@@ -138,6 +145,17 @@ css = do
   putStr "  margin-top: 2rem;"
   putStr "}"
   putStr ".week-seperator {"
+  putStr "  margin: 0.4rem 0;"
+  putStr "  display: flex;"
+  putStr "  justify-content: space-between;"
+  putStr "  align-items: center;"
+  putStr "  gap: 0.5rem;"
+  putStr "  height: 1px;"
+  putStr "  font-size: 0.8em;"
+  putStr "}"
+  putStr ".week-seperator::before {"
+  putStr "  content: ' ';"
+  putStr "  flex-grow: 1;"
   putStr "  height: 1px;"
   putStr "  border: none;"
   putStr "  background-color: #ccc;"
@@ -147,8 +165,8 @@ css = do
   putStr "  margin-left: 4rem;"
   putStr "  font-variant-numeric: oldstyle-nums;"
   putStr "}"
-  putStr ".event + .event.new-day {"
-  putStr "  margin-top: 0.5rem;"
+  putStr ".event:not(.new-day) .date {"
+  putStr "  visibility: hidden;"
   putStr "}"
   putStr ".date {"
   putStr "  width: 4rem;"
