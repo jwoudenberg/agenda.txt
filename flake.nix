@@ -8,12 +8,14 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        app = pkgs.haskellPackages.callCabal2nix "agenda-txt" ./. { };
-      in {
-        defaultPackage = pkgs.haskell.lib.justStaticExecutables app;
+        agenda-txt = pkgs.haskellPackages.callCabal2nix "agenda-txt" ./agenda-txt { };
+      in
+      {
+        defaultPackage = pkgs.haskell.lib.justStaticExecutables agenda-txt;
         devShell = pkgs.haskellPackages.shellFor {
-          packages = p: [ app ];
+          packages = p: [ agenda-txt ];
           buildInputs = [
+            # For Haskell
             pkgs.cabal-install
             pkgs.haskellPackages.ghcid
             pkgs.haskellPackages.hpack
