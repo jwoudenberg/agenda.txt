@@ -35,7 +35,14 @@ func main() {
 
 	for _, e := range c.Events {
 		formattedStart := e.Start.In(time.Local).Format("2006-01-02 15:04")
-		formattedDuration := fmt.Sprintf("%d:%02d", int(e.Duration.Hours()), int(e.Duration.Minutes())%60)
-		fmt.Printf("%s +%s %s (%s)\n", formattedStart, formattedDuration, e.Summary, e.Location)
+		formattedDuration := ""
+		if e.Duration != nil {
+			formattedDuration = fmt.Sprintf(" +%d:%02d", int(e.Duration.Hours()), int(e.Duration.Minutes())%60)
+		}
+		formattedLocation := ""
+		if e.Location != "" {
+			formattedLocation = fmt.Sprintf(" (%s)", e.Location)
+		}
+		fmt.Printf("%s%s %s%s\n", formattedStart, formattedDuration, e.Summary, formattedLocation)
 	}
 }
